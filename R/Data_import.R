@@ -16,11 +16,18 @@ if(!require(ggplot2)){install.packages('ggplot2')}; library(ggplot2) # For prett
 
 #### Connect to the PIT-tag database and query 2024 data ####
 
-DB_conn <- dbConnect(odbc::odbc(),
+DB_conn <- DBI::dbConnect(odbc::odbc(),
                      .connection_string = "Driver={Microsoft Access Driver (*.mdb, *.accdb)};
                  DBQ=P:/GregersenC/WRIA9/PIT_STUDIES/PIT_Database/Backend/PIT_tag_database_v1.0_be.accdb")
 
 dbListTables(DB_conn)
+
+dbListFields(conn = DB_conn, name = "Detections")
+dbListFields(conn = DB_conn, name = "Deployed_tags")
+dbListFields(conn = DB_conn, name = "Release_locations")
+dbListFields(conn = DB_conn, name = "Releases")
+dbListFields(conn = DB_conn, name = "Arrays")
+dbListFields(conn = DB_conn, name = "Antennas")
 
 
 # Import all tag detections from 2024
