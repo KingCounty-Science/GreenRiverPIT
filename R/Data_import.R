@@ -45,6 +45,22 @@ Detections <- dbGetQuery(conn = DB_conn, "SELECT  Detections.Detection_ID,
                                             WHERE YEAR(Detections.Scan_date_time) = '2024'")
 
 
+# Convert detections to a data.table and examine the data
+
+Detections <- data.table(Detections)
+
+Detections[, .N, by = .(Array, Record_type)]
+
+
+# Summarize detections by tag and array
+
+Detections_summary <- Detections[, .(.N, 
+                                     First = min(Scan_date_time), 
+                                     Last = max(Scan_date_time),
+                                     Duration = (max(Scan_date_time) - min(Scan_date_time))),
+                                      keyby = .(Hex_tag_ID, Array)]
+
+
 # Import all fish tagged in 2024
 
 Deployed <- dbGetQuery(conn = DB_conn, "SELECT  Deployed_tags.Tag_ID,
@@ -68,4 +84,29 @@ Deployed <- dbGetQuery(conn = DB_conn, "SELECT  Deployed_tags.Tag_ID,
 # Disconnect from the database
 
 dbDisconnect(DB_conn)
+
+
+# Convert the deployed tags to a data.table and examine the deployed tags data
+
+Deployed <- data.table(Deployed)
+
+Deployed[, .N, by = .(Release_location, Release_date_time, Species, Hatchery_status)]
+
+
+# Join deployed tags to detections
+
+Merged <- merge(x = Deployed, y = Detections_summary, by = "Hex_tag_ID", all.x = TRUE)
+
+
+# Add a variable specifying if an individual tag was detected at an array
+
+Merged$Detected <- ifelse(is.na(Merged$N), 0, 1)
+
+
+# Reshape data into wide format
+
+All_wide <- dcast(data = Merged, Hex_tag_ID + Dec_tag_ID + Release_FK + Release_location + Release_type + 
+                    Release_date_time + Species + Hatchery_status + Length ~ Array,
+                  value.var = "Detected")
+
 
