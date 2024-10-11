@@ -45,22 +45,6 @@ Detections <- dbGetQuery(conn = DB_conn, "SELECT  Detections.Detection_ID,
                                             WHERE YEAR(Detections.Scan_date_time) = '2024'")
 
 
-# Convert detections to a data.table and examine the data
-
-Detections <- data.table(Detections)
-
-Detections[, .N, by = .(Array, Record_type)]
-
-
-# Summarize detections by tag and array
-
-Detections_summary <- Detections[, .(.N, 
-                                     First = min(Scan_date_time), 
-                                     Last = max(Scan_date_time),
-                                     Duration = (max(Scan_date_time) - min(Scan_date_time))),
-                                      keyby = .(Hex_tag_ID, Array)]
-
-
 # Import all fish tagged in 2024
 
 Deployed <- dbGetQuery(conn = DB_conn, "SELECT  Deployed_tags.Tag_ID,
@@ -78,7 +62,7 @@ Deployed <- dbGetQuery(conn = DB_conn, "SELECT  Deployed_tags.Tag_ID,
                                                 Releases.Hatchery_status,
                                                 Releases.Release_type
                                         FROM Deployed_tags INNER JOIN Releases ON Releases.Release_ID = Deployed_tags.Release_FK
-                                        WHERE Year(Releases.Release_date_time) = '2024'")
+                                        WHERE YEAR(Releases.Release_date_time) = '2024'")
 
 
 # Disconnect from the database
@@ -86,7 +70,25 @@ Deployed <- dbGetQuery(conn = DB_conn, "SELECT  Deployed_tags.Tag_ID,
 dbDisconnect(DB_conn)
 
 
-# Convert the deployed tags to a data.table and examine the deployed tags data
+#### Organize the deployed tag and detection data ####
+
+# Convert detections to a data.table and examine these data
+
+Detections <- data.table(Detections)
+
+Detections[, .N, by = .(Array, Record_type)]
+
+
+# Summarize detections by tag and array
+
+Detections_summary <- Detections[, .(.N, 
+                                     First = min(Scan_date_time), 
+                                     Last = max(Scan_date_time),
+                                     Duration = (max(Scan_date_time) - min(Scan_date_time))),
+                                 keyby = .(Hex_tag_ID, Array)]
+
+
+# Convert the deployed tags to a data.table and examine these data
 
 Deployed <- data.table(Deployed)
 
@@ -108,5 +110,24 @@ Merged$Detected <- ifelse(is.na(Merged$N), 0, 1)
 All_wide <- dcast(data = Merged, Hex_tag_ID + Dec_tag_ID + Release_FK + Release_location + Release_type + 
                     Release_date_time + Species + Hatchery_status + Length ~ Array,
                   value.var = "Detected")
+
+
+# Drop the NA variable
+
+All_wide[, 'NA' := NULL]
+
+
+# Convert the NAs within the different array variables to zeros
+
+All_wide[is.na(`Porter Side Channel`), `Porter Side Channel` := 0]
+
+All_wide[is.na(`Lower Russel Backwater`), `Lower Russel Backwater` := 0]
+
+
+# Split wide data into experimental and efficiency fish
+
+Experimental_wide <- All_wide[Release_type == "Experimental", ]
+
+Efficiency_wide <- All_wide[Release_type == "Efficiency", ]
 
 
