@@ -70,13 +70,16 @@ Deployed <- dbGetQuery(conn = DB_conn, "SELECT  Deployed_tags.Tag_ID,
 dbDisconnect(DB_conn)
 
 
-#### Organize the deployed tag and detection data ####
+#### Organize the deployed tag data and detection data ####
 
 # Convert detections to a data.table and examine these data
 
 Detections <- data.table(Detections)
 
 Detections[, .N, by = .(Array, Record_type)]
+
+length(unique(Detections$Hex_tag_ID))
+length(unique(Detections$Dec_tag_ID))
 
 
 # Summarize detections by tag and array
@@ -93,6 +96,9 @@ Detections_summary <- Detections[, .(.N,
 Deployed <- data.table(Deployed)
 
 Deployed[, .N, by = .(Release_location, Release_date_time, Species, Hatchery_status)]
+
+length(unique(Deployed$Hex_tag_ID))
+length(unique(Deployed$Dec_tag_ID))
 
 
 # Join deployed tags to detections
