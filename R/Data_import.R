@@ -129,6 +129,12 @@ All_wide[is.na(`Porter Side Channel`), `Porter Side Channel` := 0]
 
 All_wide[is.na(`Lower Russel Backwater`), `Lower Russel Backwater` := 0]
 
+All_wide[is.na(`Lower Green Barge 1`), `Lower Green Barge 1` := 0]
+
+All_wide[is.na(`Lower Green Barge 2`), `Lower Green Barge 2` := 0]
+
+All_wide[is.na(`Duwamish People's Park`), `Duwamish People's Park` := 0]
+
 
 # Split wide data into experimental and efficiency fish
 
