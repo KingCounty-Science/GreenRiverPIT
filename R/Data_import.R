@@ -16,7 +16,7 @@ if(!require(ggplot2)){install.packages('ggplot2')}; library(ggplot2) # For prett
 
 #### Connect to the PIT-tag database and query 2024 data ####
 
-DB_conn <- DBI::dbConnect(odbc::odbc(),
+DB_conn <- dbConnect(odbc::odbc(),
                      .connection_string = "Driver={Microsoft Access Driver (*.mdb, *.accdb)};
                  DBQ=P:/GregersenC/WRIA9/PIT_STUDIES/PIT_Database/Backend/PIT_tag_database_v1.0_be.accdb")
 
@@ -28,6 +28,7 @@ dbListFields(conn = DB_conn, name = "Release_locations")
 dbListFields(conn = DB_conn, name = "Releases")
 dbListFields(conn = DB_conn, name = "Arrays")
 dbListFields(conn = DB_conn, name = "Antennas")
+dbListFields(conn = DB_conn, name = "Uploads")
 
 
 # Import all tag detections from 2024
@@ -82,9 +83,9 @@ length(unique(Detections$Hex_tag_ID))
 length(unique(Detections$Dec_tag_ID))
 
 
-# Summarize detections by tag and array
+# Summarize detections by tag and array, dropping pet tags and test tags
 
-Detections_summary <- Detections[, .(.N, 
+Detections_summary <- Detections[Record_type == "Tag", .(.N, 
                                      First = min(Scan_date_time), 
                                      Last = max(Scan_date_time),
                                      Duration = (max(Scan_date_time) - min(Scan_date_time))),
@@ -95,7 +96,7 @@ Detections_summary <- Detections[, .(.N,
 
 Deployed <- data.table(Deployed)
 
-Deployed[, .N, by = .(Release_location, Release_date_time, Species, Hatchery_status)]
+Deployed[, .N, by = .(Release_FK, Release_location, Release_date_time, Species, Hatchery_status)]
 
 length(unique(Deployed$Hex_tag_ID))
 length(unique(Deployed$Dec_tag_ID))
@@ -109,6 +110,16 @@ Merged <- merge(x = Deployed, y = Detections_summary, by = "Hex_tag_ID", all.x =
 # Add a variable specifying if an individual tag was detected at an array
 
 Merged$Detected <- ifelse(is.na(Merged$N), 0, 1)
+
+
+# Calculate times between release to detection at the different arrays
+
+Travel_times <- Merged[Detected == 1 & Release_type == "Experimental", .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
+                       by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
+
+ggplot(data = Travel_times[Release_location != "Lower Russel Backwater"], mapping = aes(y = Travel_time, x = Array),) +
+  geom_violin() +
+  facet_wrap(as.factor(Travel_times[Release_location != "Lower Russel Backwater", Release_location]))
 
 
 # Reshape data into wide format
