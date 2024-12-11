@@ -41,6 +41,7 @@ Detections <- dbGetQuery(conn = DB_conn, "SELECT  Detections.Detection_ID,
                                                   Detections.Record_type,
                                                   Detections.Hex_tag_ID,
                                                   Detections.Dec_tag_ID,
+                                                  Detections.Recapture_length,
                                                   Uploads.Array
                                             FROM Detections INNER JOIN Uploads ON Uploads.Upload_ID = Detections.Upload_FK
                                             WHERE YEAR(Detections.Scan_date_time) = '2024'")
@@ -75,7 +76,7 @@ dbDisconnect(DB_conn)
 
 # Convert detections to a data.table and examine these data
 
-Detections <- data.table(Detections)
+Detections <- data.table(Detections); str(Detections)
 
 Detections[, .N, by = .(Array, Record_type)]
 
@@ -86,20 +87,34 @@ length(unique(Detections$Dec_tag_ID))
 # Summarize detections by tag and array, dropping pet tags and test tags
 
 Detections_summary <- Detections[Record_type == "Tag", .(.N, 
-                                     First = min(Scan_date_time), 
-                                     Last = max(Scan_date_time),
-                                     Duration = (max(Scan_date_time) - min(Scan_date_time))),
-                                 keyby = .(Hex_tag_ID, Array)]
+                                    First = min(Scan_date_time), 
+                                    Last = max(Scan_date_time),
+                                    Duration = (max(Scan_date_time) - min(Scan_date_time))),
+                                 keyby = .(Hex_tag_ID, Array, Upload_FK)]
+
+
+# Re-shape detections to identify duplicated uploads
+
+Detect_wide <- dcast(Detections_summary, formula = Hex_tag_ID ~ Array, value.var = "First")
+
+write.table(x = Detect_wide, file = "R/Output/Detect_wide.csv", sep = ",", row.names = F)
 
 
 # Convert the deployed tags to a data.table and examine these data
 
-Deployed <- data.table(Deployed)
+Deployed <- data.table(Deployed); str(Deployed)
 
 Deployed[, .N, by = .(Release_FK, Release_location, Release_date_time, Species, Hatchery_status)]
 
 length(unique(Deployed$Hex_tag_ID))
 length(unique(Deployed$Dec_tag_ID))
+
+
+# Add a character length vector for the decimal tag ID and export the table to a csv file
+
+Deployed$N_char <- nchar(Deployed$Dec_tag_ID)
+
+write.table(x = Deployed, file = "R/Output/Deployed_tags.csv", sep = ",", row.names = F)
 
 
 # Join deployed tags to detections
@@ -114,7 +129,8 @@ Merged$Detected <- ifelse(is.na(Merged$N), 0, 1)
 
 # Calculate times between release to detection at the different arrays
 
-Travel_times <- Merged[Detected == 1 & Release_type == "Experimental", .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
+Travel_times <- Merged[Detected == 1 & Release_type == "Experimental", 
+                       .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
                        by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
 
 ggplot(data = Travel_times[Release_location != "Lower Russel Backwater"], mapping = aes(y = Travel_time, x = Array),) +
