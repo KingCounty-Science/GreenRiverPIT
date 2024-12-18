@@ -1,5 +1,4 @@
 
-
 ## Connect to the PIT-tagging database and query data for the 2024 analysis ##
 
 
@@ -93,13 +92,6 @@ Detections_summary <- Detections[Record_type == "Tag", .(.N,
                                  keyby = .(Hex_tag_ID, Array, Upload_FK)]
 
 
-# Re-shape detections to identify duplicated uploads
-
-Detect_wide <- dcast(Detections_summary, formula = Hex_tag_ID ~ Array, value.var = "First")
-
-write.table(x = Detect_wide, file = "R/Output/Detect_wide.csv", sep = ",", row.names = F)
-
-
 # Convert the deployed tags to a data.table and examine these data
 
 Deployed <- data.table(Deployed); str(Deployed)
@@ -133,9 +125,10 @@ Travel_times <- Merged[Detected == 1 & Release_type == "Experimental",
                        .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
                        by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
 
-ggplot(data = Travel_times[Release_location != "Lower Russel Backwater"], mapping = aes(y = Travel_time, x = Array),) +
+ggplot(data = Travel_times[Release_location %in% c("WDFW Screw Trap", "Palmer Ponds Outlet", "Howard Hanson Reservoir")], 
+       mapping = aes(y = Travel_time, x = Array),) +
   geom_violin() +
-  facet_wrap(as.factor(Travel_times[Release_location != "Lower Russel Backwater", Release_location]))
+  facet_wrap(as.factor(Travel_times[Release_location %in% c("WDFW Screw Trap", "Palmer Ponds Outlet", "Howard Hanson Reservoir"), Release_location]))
 
 
 # Reshape data into wide format
