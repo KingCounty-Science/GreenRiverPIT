@@ -5,7 +5,7 @@
 #### Load packages ####
 
 if(!require(data.table)){install.packages('data.table'); library(data.table)} # Data manipulation package
-if(!require(dplyr)){install.packages('dplyr'); library(dplyr)} # For the 'recode' function
+if(!require(dplyr)){install.packages('dplyr'); library(dplyr)} # For the 'case_match' function
 if(!require(lubridate)){install.packages('lubridate'); library(lubridate)} # Easy date functions
 if(!require(DBI)){install.packages('DBI')}; library(DBI) # For database connectivity
 if(!require(dataRetrieval)){install.packages('dataRetrieval')}; library(dataRetrieval) # USGS data retrieval functions
@@ -125,10 +125,56 @@ Travel_times <- Merged[Detected == 1 & Release_type == "Experimental",
                        .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
                        by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
 
-ggplot(data = Travel_times[Release_location %in% c("WDFW Screw Trap", "Palmer Ponds Outlet", "Howard Hanson Reservoir")], 
-       mapping = aes(y = Travel_time, x = Array),) +
+
+# Subset to releases at the reservoir, Palmer hatchery, and WDFW screw trap
+
+unique(Travel_times$Release_location)
+
+Travel_times <- Travel_times[Release_location %in% c("WDFW Screw Trap",
+                                                     "Palmer Ponds Outlet", 
+                                                     "Howard Hanson Reservoir"),]
+
+
+# Subset to detections at the Green barges, Porter side channel, Lower Russel backwater, Duwamish People's Park, and TBIOS recaptures
+
+unique(Travel_times$Array)
+
+Travel_times <- Travel_times[Array %in% c("Lower Green Barge 1", 
+                                          "Lower Green Barge 2", 
+                                          "Porter Side Channel", 
+                                          "Duwamish People's Park",
+                                          "WDFW TBiOS Opposite Slip 4", 
+                                          "WDFW TBiOS Slip 4", 
+                                          "Lower Russel Backwater"), ]
+
+
+# Create a new array variable that merges the two barges and the two TBIOS locations
+
+Travel_times[, Array := factor(Array)]; levels(Travel_times$Array)
+
+Travel_times[, Array_combined := as.factor(case_match(Array, c("Lower Green Barge 1", "Lower Green Barge 2") ~ "Lower Green Barges",
+                                          c("WDFW TBiOS Opposite Slip 4", "WDFW TBiOS Slip 4") ~ "Slip 4",
+                                          .default = Array))]
+levels(Travel_times$Array_combined)
+
+
+# Order arrays from most upstream to most downstream
+
+Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter Side Channel",
+                                                                    "Lower Green Barge",
+                                                                    "Lower Russel Backwater",
+                                                                    "Duwamish People's Park",
+                                                                    "Slip 4"),
+                                                                    ordered = TRUE)]
+levels(Travel_times$Array_combined)
+
+
+# Plot travel times for Chinook and Coho
+
+ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Array_combined),) +
   geom_violin() +
-  facet_wrap(as.factor(Travel_times[Release_location %in% c("WDFW Screw Trap", "Palmer Ponds Outlet", "Howard Hanson Reservoir"), Release_location]))
+  facet_wrap(as.factor(Travel_times$Release_location)) +
+  labs(x = "Detection array", y = "Travel time (days)")
 
 
 # Reshape data into wide format
