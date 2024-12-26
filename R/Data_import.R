@@ -5,12 +5,12 @@
 #### Load packages ####
 
 if(!require(data.table)){install.packages('data.table'); library(data.table)} # Data manipulation package
-if(!require(dplyr)){install.packages('dplyr'); library(dplyr)} # For the 'case_match' function
+if(!require(dplyr)){install.packages('dplyr'); library(dplyr)} # For data wrangling functions
 if(!require(lubridate)){install.packages('lubridate'); library(lubridate)} # Easy date functions
 if(!require(DBI)){install.packages('DBI')}; library(DBI) # For database connectivity
 if(!require(dataRetrieval)){install.packages('dataRetrieval')}; library(dataRetrieval) # USGS data retrieval functions
-if(!require(tidyr)){install.packages('tidyr')}; library(tidyr) # For data wrangling (spread(), gather())
 if(!require(ggplot2)){install.packages('ggplot2')}; library(ggplot2) # For pretty plotting
+if(!require(marked)){install.packages('marked')}; library(marked) # For mark-recapture modeling
 
 
 #### Connect to the PIT-tag database and query 2024 data ####
@@ -88,7 +88,9 @@ length(unique(Detections$Dec_tag_ID))
 Detections_summary <- Detections[Record_type == "Tag", .(.N, 
                                     First = min(Scan_date_time), 
                                     Last = max(Scan_date_time),
-                                    Duration = (max(Scan_date_time) - min(Scan_date_time))),
+                                    Duration = max(Scan_date_time) - min(Scan_date_time),
+                                    Duration_days = round(as.numeric((max(Scan_date_time) - min(Scan_date_time))/86400), 3),
+                                    Max_recap_length = max(Recapture_length)),
                                  keyby = .(Hex_tag_ID, Array, Upload_FK)]
 
 
@@ -116,10 +118,10 @@ Merged <- merge(x = Deployed, y = Detections_summary, by = "Hex_tag_ID", all.x =
 
 # Add a variable specifying if an individual tag was detected at an array
 
-Merged$Detected <- ifelse(is.na(Merged$N), 0, 1)
+Merged[, Detected := ifelse(is.na(Merged$N), 0, 1)]
 
 
-# Calculate times between release to detection at the different arrays
+# Calculate times between releases to detection at the different arrays
 
 Travel_times <- Merged[Detected == 1 & Release_type == "Experimental", 
                        .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
@@ -132,56 +134,53 @@ unique(Travel_times$Release_location)
 
 Travel_times <- Travel_times[Release_location %in% c("WDFW Screw Trap",
                                                      "Palmer Ponds Outlet", 
-                                                     "Howard Hanson Reservoir"),]
+                                                     "Howard Hanson Reservoir"), ]
 
 
-# Subset to detections at the Green barges, Porter side channel, Lower Russel backwater, Duwamish People's Park, and TBIOS recaptures
+# Drop the single detection at the WDFW screw trap
 
-unique(Travel_times$Array)
+Travel_times[, .N, by = Array]
 
-Travel_times <- Travel_times[Array %in% c("Lower Green Barge 1", 
-                                          "Lower Green Barge 2", 
-                                          "Porter Side Channel", 
-                                          "Duwamish People's Park",
-                                          "WDFW TBiOS Opposite Slip 4", 
-                                          "WDFW TBiOS Slip 4", 
-                                          "Lower Russel Backwater"), ]
+Travel_times <- Travel_times[Array != "WDFW Screw Trap", ]
 
 
-# Create a new array variable that merges the two barges and the two TBIOS locations
+# Create a new array variable that merges the two barges and two TBIOS locations, then order the arrays from upstream to downstream
 
 Travel_times[, Array := factor(Array)]; levels(Travel_times$Array)
 
 Travel_times[, Array_combined := as.factor(case_match(Array, c("Lower Green Barge 1", "Lower Green Barge 2") ~ "Lower Green Barges",
                                           c("WDFW TBiOS Opposite Slip 4", "WDFW TBiOS Slip 4") ~ "Slip 4",
                                           .default = Array))]
+
 levels(Travel_times$Array_combined)
 
-
-# Order arrays from most upstream to most downstream
-
 Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter Side Channel",
-                                                                    "Lower Green Barge",
+                                                                    "Lower Green Barges",
                                                                     "Lower Russel Backwater",
                                                                     "Duwamish People's Park",
                                                                     "Slip 4"),
                                                                     ordered = TRUE)]
+
 levels(Travel_times$Array_combined)
 
 
 # Plot travel times for Chinook and Coho
 
-ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Array_combined),) +
-  geom_violin() +
-  facet_wrap(as.factor(Travel_times$Release_location)) +
-  labs(x = "Detection array", y = "Travel time (days)")
+Travel_time_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Array_combined)) +
+                            geom_violin(fill = 'steelblue') +
+                            facet_wrap(as.factor(Travel_times$Release_location)) +
+                            labs(x = "Detection location", y = "Travel time (days)") +
+                            theme_bw() +
+                            theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+ggsave(filename = "Travel_times.tiff", plot = Travel_time_plot, device = "tiff", path = "R/Output",
+       width = 6.5, height = 5.5, units = "in", dpi = 400, compression = 'lzw')
 
 
-# Reshape data into wide format
+# Reshape the merged data into wide format
 
 All_wide <- dcast(data = Merged, Hex_tag_ID + Dec_tag_ID + Release_FK + Release_location + Release_type + 
-                    Release_date_time + Species + Hatchery_status + Length ~ Array,
-                  value.var = "Detected")
+                    Release_date_time + Species + Hatchery_status + Length ~ Array, value.var = "Detected")
 
 
 # Drop the NA variable
@@ -201,6 +200,12 @@ All_wide[is.na(`Lower Green Barge 2`), `Lower Green Barge 2` := 0]
 
 All_wide[is.na(`Duwamish People's Park`), `Duwamish People's Park` := 0]
 
+All_wide[is.na(`WDFW Screw Trap`), `WDFW Screw Trap` := 0]
+
+All_wide[is.na(`WDFW TBiOS Slip 4`), `WDFW TBiOS Slip 4` := 0]
+
+All_wide[is.na(`WDFW TBiOS Opposite Slip 4`), `WDFW TBiOS Opposite Slip 4` := 0]
+
 
 # Split wide data into experimental and efficiency fish
 
@@ -209,3 +214,8 @@ Experimental_wide <- All_wide[Release_type == "Experimental", ]
 Efficiency_wide <- All_wide[Release_type == "Efficiency", ]
 
 
+# Split the experimental release data into Chinook and Coho releases
+
+Experimental_wide_chinook <- Experimental_wide[Species == "Chinook", ]
+
+Experimental_wide_coho <- Experimental_wide[Species == "Coho", ]
