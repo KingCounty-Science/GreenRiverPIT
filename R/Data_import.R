@@ -121,6 +121,24 @@ Merged <- merge(x = Deployed, y = Detections_summary, by = "Hex_tag_ID", all.x =
 Merged[, Detected := ifelse(is.na(Merged$N), 0, 1)]
 
 
+# Visualize the duration of time tagged Chinook spend in the Porter side channel, the Lower Russel backwater, 
+# and the Duwamish People's park
+
+Duration <- Merged[Species == "Chinook" & Detected == 1, ]
+
+unique(Duration$Array)
+
+Duration <- Duration[Array %in% c("Porter Side Channel", "Lower Russel Backwater", "Duwamish People's Park"), ]
+
+Duration.plot <- ggplot(data = Duration, mapping = aes(y = Duration_days, x = Array)) +
+  geom_boxplot(fill = 'steelblue') +
+  labs(x = "Off-channel array", y = "Residence time (days)") +
+  theme_bw()
+
+ggsave(filename = "Duration.tiff", plot = Duration.plot, device = "tiff", path = "R/Output",
+       width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
+
+
 # Calculate times between releases to detection at the different arrays
 
 Travel_times <- Merged[Detected == 1 & Release_type == "Experimental", 
@@ -219,3 +237,88 @@ Efficiency_wide <- All_wide[Release_type == "Efficiency", ]
 Experimental_wide_chinook <- Experimental_wide[Species == "Chinook", ]
 
 Experimental_wide_coho <- Experimental_wide[Species == "Coho", ]
+
+
+#### Experiment with constructing CJS models #### (This is currently a mess)
+
+data(dipper)
+head(dipper)
+
+
+cjs.m1 <- crm(dipper)
+cjs.m1
+
+cjs.m1 <- cjs.hessian(cjs.m1)
+
+predict(cjs.m1, SE = TRUE,)
+
+plogis(cjs.m1$results$beta$Phi)
+
+plogis(cjs.m1$results$beta$p)
+
+dipper.proc <- process.data(dipper, 
+                            group = "sex")
+
+dipper.proc$data
+
+dipper.ddl <- make.design.data(dipper.proc)
+
+# Outine formulas for each parameter
+Phi.dot <- list(formula=~1)  # ~1 is always a constant (or single estimate)
+Phi.sex <- list(formula=~sex) # This formula will have an intercept (for females) and an estimate for the difference between females and males
+p.sex <- list(formula=~sex) # Be careful of case-sensitive names. Use the exact group column that was in data
+
+# Make new model (using design data) with constant survival, but different detection probabilities between sexes
+cjs.m2 <- crm(dipper.proc, 
+              dipper.ddl,
+              model.parameters = list(Phi = Phi.dot, 
+                                      p = p.sex),
+              accumulate = FALSE)
+## 
+
+cjs.m2
+
+Test <- Experimental_wide_chinook[Release_location %in% c("Palmer Ponds Outlet", "WDFW Screw Trap"), 1:14]
+
+Test <- Test[, c("Release_location", 
+                 "Hatchery_status", 
+                 "Length", 
+                 "Release_date_time", 
+                 "Porter Side Channel",
+                 "Lower Russel Backwater",
+                 "Lower Green Barge 1",
+                 "Lower Green Barge 2",
+                 "Duwamish People's Park")]
+
+Test[, ch := as.character(paste0(`Porter Side Channel`, 
+                                 `Lower Russel Backwater`, 
+                                 `Lower Green Barge 1`,
+                                 `Lower Green Barge 2`,
+                                 `Duwamish People's Park`))]
+names(Test)
+
+Test[,c("Porter Side Channel", 
+     "Lower Russel Backwater", 
+     "Lower Green Barge 1",
+     "Lower Green Barge 2",
+     "Duwamish People's Park") := NULL]
+
+Test$Release_location <- as.factor(Test$Release_location)
+
+Test$Hatchery_status <- as.factor(Test$Hatchery_status)
+
+Test[, c("Length", "Release_date_time") := NULL]
+
+Test_process <- process.data(data = Test, model = "CJS", groups = c("Release_location", "Hatchery_status"), accumulate = FALSE)
+warnings()
+
+Test.ddl <- make.design.data(Test_process)
+
+Phi.location <- list(formula ~ Release_location)
+Phi.origin <- list(formula ~ Hatchery_status)
+Phi.time <- list(formula ~ time)
+
+p.location <- list(formula ~ Release_location)
+p.origin <- list(formula ~ Hatchery_status)
+
+cjs.test <- crm(Test_process, Test.ddl, model.parameters = list(Phi = Phi.time, p = p.location))
