@@ -148,7 +148,7 @@ Travel_times <- Merged[Detected == 1 & Release_type == "Experimental",
 
 # Subset to releases at the reservoir, Palmer hatchery, and WDFW screw trap
 
-unique(Travel_times$Release_location)
+Travel_times[, .N, by = Release_location]
 
 Travel_times <- Travel_times[Release_location %in% c("WDFW Screw Trap",
                                                      "Palmer Ponds Outlet", 
@@ -195,11 +195,30 @@ ggsave(filename = "Travel_times.tiff", plot = Travel_time_plot, device = "tiff",
        width = 6.5, height = 5.5, units = "in", dpi = 400, compression = 'lzw')
 
 
+Travel_time_release_timing_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Release_date_time)) +
+                                          geom_point(aes(col = Array_combined)) +
+                                          facet_wrap(as.factor(Travel_times$Release_location)) +
+                                          labs(x = "Release timing", y = "Travel time (days)", col = "Detection locations") +
+                                          theme_bw()
+
+ggsave(filename = "Travel_times_release_timing.tiff", plot = Travel_time_release_timing_plot, device = "tiff", path = "R/Output",
+       width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
+
+
+Travel_time_length_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Length)) +
+                                          geom_point(aes(col = Array_combined)) +
+                                          facet_wrap(as.factor(Travel_times$Release_location)) +
+                                          labs(x = "Fork length (mm)", y = "Travel time (days)", col = "Detection locations") +
+                                          theme_bw()
+
+ggsave(filename = "Travel_times_length.tiff", plot = Travel_time_length_plot, device = "tiff", path = "R/Output",
+       width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
+
+
 # Reshape the merged data into wide format
 
 All_wide <- dcast(data = Merged, Hex_tag_ID + Dec_tag_ID + Release_FK + Release_location + Release_type + 
                     Release_date_time + Species + Hatchery_status + Length ~ Array, value.var = "Detected")
-
 
 # Drop the NA variable
 
@@ -243,12 +262,14 @@ Experimental_wide_coho <- Experimental_wide[Species == "Coho", ]
 
 data(dipper)
 head(dipper)
-
+str(dipper)
 
 cjs.m1 <- crm(dipper)
 cjs.m1
 
 cjs.m1 <- cjs.hessian(cjs.m1)
+
+cjs.m1
 
 predict(cjs.m1, SE = TRUE,)
 
@@ -260,6 +281,8 @@ dipper.proc <- process.data(dipper,
                             group = "sex")
 
 dipper.proc$data
+
+?process.data
 
 dipper.ddl <- make.design.data(dipper.proc)
 
@@ -278,10 +301,9 @@ cjs.m2 <- crm(dipper.proc,
 
 cjs.m2
 
-Test <- Experimental_wide_chinook[Release_location %in% c("Palmer Ponds Outlet", "WDFW Screw Trap"), 1:14]
+Test <- Experimental_wide_chinook[Release_location == "WDFW Screw Trap", 1:14]
 
-Test <- Test[, c("Release_location", 
-                 "Hatchery_status", 
+Test <- Test[, c("Hatchery_status", 
                  "Length", 
                  "Release_date_time", 
                  "Porter Side Channel",
@@ -297,22 +319,33 @@ Test[, ch := as.character(paste0(`Porter Side Channel`,
                                  `Duwamish People's Park`))]
 names(Test)
 
+str(Test)
+
 Test[,c("Porter Side Channel", 
      "Lower Russel Backwater", 
      "Lower Green Barge 1",
      "Lower Green Barge 2",
      "Duwamish People's Park") := NULL]
 
-Test$Release_location <- as.factor(Test$Release_location)
+#Test$Release_location <- as.factor(Test$Release_location)
 
 Test$Hatchery_status <- as.factor(Test$Hatchery_status)
 
-Test[, c("Length", "Release_date_time") := NULL]
+Test <- Test[!(is.na(Length)), ]
 
-Test_process <- process.data(data = Test, model = "CJS", groups = c("Release_location", "Hatchery_status"), accumulate = FALSE)
+Test <- Test[, c(1,4)]
+Test2 <- (as.data.frame(Test))
+
+str(Test)
+Test_process <- process.data(data = Test2, model = "CJS", groups = "Hatchery_status", accumulate = TRUE)
+warnings()
 warnings()
 
+Test_process$data
+
 Test.ddl <- make.design.data(Test_process)
+
+Test.ddl$design.parameters
 
 Phi.location <- list(formula ~ Release_location)
 Phi.origin <- list(formula ~ Hatchery_status)
@@ -321,4 +354,6 @@ Phi.time <- list(formula ~ time)
 p.location <- list(formula ~ Release_location)
 p.origin <- list(formula ~ Hatchery_status)
 
-cjs.test <- crm(Test_process, Test.ddl, model.parameters = list(Phi = Phi.time, p = p.location))
+p.dot <- list(formula ~ 1)
+
+cjs.test <- crm(Test_process, Test.ddl, model.parameters = list(Phi = Phi.origin, p = p.dot))
