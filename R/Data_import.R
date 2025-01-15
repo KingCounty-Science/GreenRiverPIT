@@ -121,6 +121,17 @@ Merged <- merge(x = Deployed, y = Detections_summary, by = "Hex_tag_ID", all.x =
 Merged[, Detected := ifelse(is.na(Merged$N), 0, 1)]
 
 
+# Add a tag-type variable
+
+Merged[, Tag_type := substr(Hex_tag_ID, start = 1, stop = 3)]
+
+unique(Merged$Tag_type)
+
+Merged[, Tag_type := factor(case_match(Tag_type, "3D6" ~ "9mm", "3DD" ~ "12mm", "3DE" ~ "8mm"))]
+
+Merged[, .N, by = Tag_type]
+
+
 # Visualize the duration of time tagged Chinook spend in the Porter side channel, the Lower Russel backwater, 
 # and the Duwamish People's park
 
@@ -131,9 +142,10 @@ unique(Duration$Array)
 Duration <- Duration[Array %in% c("Porter Side Channel", "Lower Russel Backwater", "Duwamish People's Park"), ]
 
 Duration.plot <- ggplot(data = Duration, mapping = aes(y = Duration_days, x = Array)) +
-  geom_boxplot(fill = 'steelblue') +
-  labs(x = "Off-channel array", y = "Residence time (days)") +
-  theme_bw()
+                        geom_boxplot(fill = 'steelblue') +
+                        labs(x = "Off-channel array", y = "Residence time (days)") +
+                        coord_cartesian(ylim = c(0,45)) + # Note this line omits the fish that died at DPP
+                        theme_bw() 
 
 ggsave(filename = "Duration.tiff", plot = Duration.plot, device = "tiff", path = "R/Output",
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
@@ -141,18 +153,27 @@ ggsave(filename = "Duration.tiff", plot = Duration.plot, device = "tiff", path =
 
 # Calculate times between releases to detection at the different arrays
 
-Travel_times <- Merged[Detected == 1 & Release_type == "Experimental", 
-                       .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
+Travel_times <- Merged[Detected == 1, .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
                        by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
 
 
-# Subset to releases at the reservoir, Palmer hatchery, and WDFW screw trap
+# Subset to releases at the reservoir, Palmer hatchery, WDFW screw trap, and Tukwilla pedestrian bridge,
+# then order the release locations from upstream to downstream
 
 Travel_times[, .N, by = Release_location]
 
 Travel_times <- Travel_times[Release_location %in% c("WDFW Screw Trap",
                                                      "Palmer Ponds Outlet", 
-                                                     "Howard Hanson Reservoir"), ]
+                                                     "Howard Hanson Reservoir",
+                                                     "Tukwila Pedestrian Bridge"), ]
+
+Travel_times[, Release_location := factor(Release_location, levels = c("Howard Hanson Reservoir",
+                                                                       "Palmer Ponds Outlet",
+                                                                       "WDFW Screw Trap",
+                                                                       "Tukwila Pedestrian Bridge"),
+                                                                        ordered = TRUE)]
+
+levels(Travel_times$Release_location)
 
 
 # Drop the single detection at the WDFW screw trap
@@ -166,16 +187,19 @@ Travel_times <- Travel_times[Array != "WDFW Screw Trap", ]
 
 Travel_times[, Array := factor(Array)]; levels(Travel_times$Array)
 
-Travel_times[, Array_combined := as.factor(case_match(Array, c("Lower Green Barge 1", "Lower Green Barge 2") ~ "Lower Green Barges",
+Travel_times[, Array_combined := as.factor(case_match(Array, c("Lower Green Barge 1", "Lower Green Barge 2") ~ "Green Barges",
                                           c("WDFW TBiOS Opposite Slip 4", "WDFW TBiOS Slip 4") ~ "Slip 4",
+                                          "Lower Russel Backwater" ~ "Lower Russel",
+                                          "Duwamish People's Park" ~ "People's Park",
+                                          "Porter Side Channel" ~ "Porter",
                                           .default = Array))]
 
 levels(Travel_times$Array_combined)
 
-Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter Side Channel",
-                                                                    "Lower Green Barges",
-                                                                    "Lower Russel Backwater",
-                                                                    "Duwamish People's Park",
+Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter",
+                                                                    "Green Barges",
+                                                                    "Lower Russel",
+                                                                    "People's Park",
                                                                     "Slip 4"),
                                                                     ordered = TRUE)]
 
@@ -198,7 +222,7 @@ ggsave(filename = "Travel_times.tiff", plot = Travel_time_plot, device = "tiff",
 Travel_time_release_timing_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Release_date_time)) +
                                           geom_point(aes(col = Array_combined)) +
                                           facet_wrap(as.factor(Travel_times$Release_location)) +
-                                          labs(x = "Release timing", y = "Travel time (days)", col = "Detection locations") +
+                                          labs(x = "Release timing", y = "Travel time (days)", col = "Detection location") +
                                           theme_bw()
 
 ggsave(filename = "Travel_times_release_timing.tiff", plot = Travel_time_release_timing_plot, device = "tiff", path = "R/Output",
@@ -208,21 +232,45 @@ ggsave(filename = "Travel_times_release_timing.tiff", plot = Travel_time_release
 Travel_time_length_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Length)) +
                                           geom_point(aes(col = Array_combined)) +
                                           facet_wrap(as.factor(Travel_times$Release_location)) +
-                                          labs(x = "Fork length (mm)", y = "Travel time (days)", col = "Detection locations") +
+                                          labs(x = "Fork length (mm)", y = "Travel time (days)", col = "Detection location") +
                                           theme_bw()
 
 ggsave(filename = "Travel_times_length.tiff", plot = Travel_time_length_plot, device = "tiff", path = "R/Output",
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
 
 
-# Reshape the merged data into wide format
+# Reshape the merged data into wide format and drop data we don't want to use for a CJS model
 
-All_wide <- dcast(data = Merged, Hex_tag_ID + Dec_tag_ID + Release_FK + Release_location + Release_type + 
+All_wide <- Merged[Array %in% c("Porter Side Channel", 
+                                "Lower Russel Backwater",
+                                "Lower Green Barge 1",
+                                "Lower Green Barge 2",
+                                "Duwamish People's Park",
+                                NA), ]
+
+All_wide[, Array := factor(Array, levels = c("Porter Side Channel", 
+                                             "Lower Russel Backwater",
+                                             "Lower Green Barge 1",
+                                             "Lower Green Barge 2",
+                                             "Duwamish People's Park"), 
+                           ordered = TRUE)]
+
+levels(All_wide$Array)
+
+# Drop 8mm tags
+
+All_wide <- All_wide[Tag_type != "8mm", ]
+
+
+All_wide <- dcast(data = All_wide, Hex_tag_ID + Dec_tag_ID + Tag_type + Release_FK + Release_location + Release_type + 
                     Release_date_time + Species + Hatchery_status + Length ~ Array, value.var = "Detected")
 
 # Drop the NA variable
 
 All_wide[, 'NA' := NULL]
+
+
+
 
 
 # Convert the NAs within the different array variables to zeros
@@ -236,12 +284,6 @@ All_wide[is.na(`Lower Green Barge 1`), `Lower Green Barge 1` := 0]
 All_wide[is.na(`Lower Green Barge 2`), `Lower Green Barge 2` := 0]
 
 All_wide[is.na(`Duwamish People's Park`), `Duwamish People's Park` := 0]
-
-All_wide[is.na(`WDFW Screw Trap`), `WDFW Screw Trap` := 0]
-
-All_wide[is.na(`WDFW TBiOS Slip 4`), `WDFW TBiOS Slip 4` := 0]
-
-All_wide[is.na(`WDFW TBiOS Opposite Slip 4`), `WDFW TBiOS Opposite Slip 4` := 0]
 
 
 # Split wide data into experimental and efficiency fish
@@ -301,9 +343,9 @@ cjs.m2 <- crm(dipper.proc,
 
 cjs.m2
 
-Test <- Experimental_wide_chinook[Release_location == "WDFW Screw Trap", 1:14]
+Test <- Experimental_wide_chinook[Release_location != "Lower Russel Backwater"]
 
-Test <- Test[, c("Hatchery_status", 
+Test2 <- Test[, c("Hatchery_status", 
                  "Length", 
                  "Release_date_time", 
                  "Porter Side Channel",
@@ -312,14 +354,14 @@ Test <- Test[, c("Hatchery_status",
                  "Lower Green Barge 2",
                  "Duwamish People's Park")]
 
-Test[, ch := as.character(paste0(`Porter Side Channel`, 
+Test2[, ch := as.character(paste0(`Porter Side Channel`, 
                                  `Lower Russel Backwater`, 
                                  `Lower Green Barge 1`,
                                  `Lower Green Barge 2`,
                                  `Duwamish People's Park`))]
-names(Test)
+names(Test2)
 
-str(Test)
+str(Test2)
 
 Test[,c("Porter Side Channel", 
      "Lower Russel Backwater", 
@@ -357,3 +399,47 @@ p.origin <- list(formula ~ Hatchery_status)
 p.dot <- list(formula ~ 1)
 
 cjs.test <- crm(Test_process, Test.ddl, model.parameters = list(Phi = Phi.origin, p = p.dot))
+
+##
+
+data(dipper)
+# Add a dummy weight field which are random values from 1 to 10
+  set.seed(123)
+dipper$weight=round(runif(nrow(dipper),0,9),0)+1
+# Add Flood covariate
+Flood=matrix(rep(c(0,1,1,0,0,0),each=nrow(dipper)),ncol=6)
+colnames(Flood)=paste("Flood",1:6,sep="")
+dipper=cbind(dipper,Flood)
+
+# Add td covariate, but exclude first release as a capture
+  # splitCH and process.ch are functions in the marked package
+  td=splitCH(dipper$ch)
+  
+td=td[,1:6]
+releaseocc=process.ch(dipper$ch)$first
+
+releaseocc=cbind(1:length(releaseocc),releaseocc)
+releaseocc=releaseocc[releaseocc[,2]<nchar(dipper$ch[1]),]
+td[releaseocc]=0
+colnames(td)=paste("td",2:7,sep="")
+dipper=cbind(dipper,td)
+# show names
+  names(dipper)
+  
+  # Process data
+    dipper.proc=process.data(dipper)
+  
+  # Create design data with static and time varying covariates
+    design.Phi=list(static=c("weight"),time.varying=c("Flood"))
+  design.p=list(static=c("sex"),time.varying=c("td"), age.bins=c(0,1,20))
+  
+  design.parameters=list(Phi=design.Phi, p=design.p)
+  ddl=make.design.data(dipper.proc,parameters=design.parameters)
+  names(ddl$Phi)
+  names(ddl$p)
+
+  
+  Phi.sfw=list(formula=~Flood+weight)
+  p.ast=list(formula=~age+sex+td)
+  model=crm(dipper.proc,ddl,hessian=TRUE, model.parameters=list(Phi=Phi.sfw,p=p.ast))
+  model
