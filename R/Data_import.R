@@ -11,6 +11,7 @@ if(!require(DBI)){install.packages('DBI')}; library(DBI) # For database connecti
 if(!require(dataRetrieval)){install.packages('dataRetrieval')}; library(dataRetrieval) # USGS data retrieval functions
 if(!require(ggplot2)){install.packages('ggplot2')}; library(ggplot2) # For pretty plotting
 if(!require(marked)){install.packages('marked')}; library(marked) # For mark-recapture modeling
+if(!require(rjags)){install.packages('rjags')}; library(rjags) # For fitting Bayesian models using JAGS
 
 
 #### Connect to the PIT-tag database and query 2024 data ####
@@ -132,8 +133,7 @@ Merged[, Tag_type := factor(case_match(Tag_type, "3D6" ~ "9mm", "3DD" ~ "12mm", 
 Merged[, .N, by = Tag_type]
 
 
-# Visualize the duration of time tagged Chinook spend in the Porter side channel, the Lower Russel backwater, 
-# and the Duwamish People's park
+#### Visualize the duration of time tagged Chinook spend at Porter, Lower Russel, and Duwamish People's park ####
 
 Duration <- Merged[Species == "Chinook" & Detected == 1, ]
 
@@ -151,7 +151,7 @@ ggsave(filename = "Duration.tiff", plot = Duration.plot, device = "tiff", path =
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
 
 
-# Calculate times between releases to detection at the different arrays
+#### Visualize travel times between releases to detection at the different arrays ####
 
 Travel_times <- Merged[Detected == 1, .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
                        by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
@@ -183,18 +183,19 @@ Travel_times[, .N, by = Array]
 Travel_times <- Travel_times[Array != "WDFW Screw Trap", ]
 
 
-# Create a new array variable that merges the two barges and two TBIOS locations, then order the arrays from upstream to downstream
+# Create a new array variable that merges the two barges and two TBIOS locations, then order the location from upstream to downstream
 
 Travel_times[, Array := factor(Array)]; levels(Travel_times$Array)
 
 Travel_times[, Array_combined := as.factor(case_match(Array, c("Lower Green Barge 1", "Lower Green Barge 2") ~ "Green Barges",
-                                          c("WDFW TBiOS Opposite Slip 4", "WDFW TBiOS Slip 4") ~ "Slip 4",
-                                          "Lower Russel Backwater" ~ "Lower Russel",
-                                          "Duwamish People's Park" ~ "People's Park",
-                                          "Porter Side Channel" ~ "Porter",
-                                          .default = Array))]
+                                                             c("WDFW TBiOS Opposite Slip 4", "WDFW TBiOS Slip 4") ~ "Slip 4",
+                                                             "Lower Russel Backwater" ~ "Lower Russel",
+                                                             "Duwamish People's Park" ~ "People's Park",
+                                                             "Porter Side Channel" ~ "Porter",
+                                                             .default = Array))]
 
 levels(Travel_times$Array_combined)
+Travel_times[, .N, by = Array_combined]
 
 Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter",
                                                                     "Green Barges",
@@ -204,6 +205,7 @@ Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter",
                                                                     ordered = TRUE)]
 
 levels(Travel_times$Array_combined)
+Travel_times[, .N, keyby = Array_combined]
 
 
 # Plot travel times for Chinook and Coho
@@ -220,7 +222,7 @@ ggsave(filename = "Travel_times.tiff", plot = Travel_time_plot, device = "tiff",
 
 
 Travel_time_release_timing_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Release_date_time)) +
-                                          geom_point(aes(col = Array_combined)) +
+                                          geom_point(aes(col = Array_combined), size = 1) +
                                           facet_wrap(as.factor(Travel_times$Release_location)) +
                                           labs(x = "Release timing", y = "Travel time (days)", col = "Detection location") +
                                           theme_bw()
@@ -230,7 +232,7 @@ ggsave(filename = "Travel_times_release_timing.tiff", plot = Travel_time_release
 
 
 Travel_time_length_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_time, x = Length)) +
-                                          geom_point(aes(col = Array_combined)) +
+                                          geom_point(aes(col = Array_combined), size = 1) +
                                           facet_wrap(as.factor(Travel_times$Release_location)) +
                                           labs(x = "Fork length (mm)", y = "Travel time (days)", col = "Detection location") +
                                           theme_bw()
@@ -239,38 +241,50 @@ ggsave(filename = "Travel_times_length.tiff", plot = Travel_time_length_plot, de
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
 
 
-# Reshape the merged data into wide format and drop data we don't want to use for a CJS model
+#### Reshape the merged data into a format for mark re-capture modeling ####
 
-All_wide <- Merged[Array %in% c("Porter Side Channel", 
+# Omit detections at the WDFW screw trap and slip 4
+
+Merged[, .N, by = Array]
+
+For_modeling <- Merged[Array %in% c("Porter Side Channel", 
                                 "Lower Russel Backwater",
                                 "Lower Green Barge 1",
                                 "Lower Green Barge 2",
                                 "Duwamish People's Park",
                                 NA), ]
 
-All_wide[, Array := factor(Array, levels = c("Porter Side Channel", 
+
+# Order the detection arrays from upstream to downstream
+
+For_modeling[, Array := factor(Array, levels = c("Porter Side Channel", 
                                              "Lower Russel Backwater",
                                              "Lower Green Barge 1",
                                              "Lower Green Barge 2",
                                              "Duwamish People's Park"), 
-                           ordered = TRUE)]
+                                              ordered = TRUE)]
 
-levels(All_wide$Array)
+levels(For_modeling$Array)
+
 
 # Drop 8mm tags
 
-All_wide <- All_wide[Tag_type != "8mm", ]
+For_modeling <- For_modeling[Tag_type != "8mm", ]
 
 
-All_wide <- dcast(data = All_wide, Hex_tag_ID + Dec_tag_ID + Tag_type + Release_FK + Release_location + Release_type + 
-                    Release_date_time + Species + Hatchery_status + Length ~ Array, value.var = "Detected")
+# Create a day-of-the-year release variable
+
+For_modeling[, DOY := yday(Release_date_time)]
+
+
+# Convert data to wide-format
+
+All_wide <- dcast(data = For_modeling, Hex_tag_ID + Dec_tag_ID + Tag_type + Release_FK + Release_location + Release_type + 
+                    Release_date_time + DOY + Species + Hatchery_status + Length ~ Array, value.var = "Detected")
 
 # Drop the NA variable
 
 All_wide[, 'NA' := NULL]
-
-
-
 
 
 # Convert the NAs within the different array variables to zeros
@@ -300,7 +314,7 @@ Experimental_wide_chinook <- Experimental_wide[Species == "Chinook", ]
 Experimental_wide_coho <- Experimental_wide[Species == "Coho", ]
 
 
-#### Experiment with constructing CJS models #### (This is currently a mess)
+#### Experiment with constructing CJS models (This is currently a mess) ####
 
 data(dipper)
 head(dipper)
@@ -343,7 +357,7 @@ cjs.m2 <- crm(dipper.proc,
 
 cjs.m2
 
-Test <- Experimental_wide_chinook[Release_location != "Lower Russel Backwater"]
+
 
 Test2 <- Test[, c("Hatchery_status", 
                  "Length", 
