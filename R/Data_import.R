@@ -313,6 +313,7 @@ Experimental_wide_chinook <- Experimental_wide[Species == "Chinook", ]
 
 Experimental_wide_coho <- Experimental_wide[Species == "Coho", ]
 
+str(Experimental_wide_chinook)
 
 #### Experiment with constructing CJS models (This is currently a mess) ####
 
@@ -358,8 +359,21 @@ cjs.m2 <- crm(dipper.proc,
 cjs.m2
 
 
+Experimental_wide_chinook[, ch := as.character(paste0(`Porter Side Channel`, 
+                                                      `Lower Russel Backwater`, 
+                                                      `Lower Green Barge 1`,
+                                                      `Lower Green Barge 2`,
+                                                      `Duwamish People's Park`))]
 
-Test2 <- Test[, c("Hatchery_status", 
+Test <- with(data = Experimental_wide_chinook, data.frame(ch, Length, DOY, Tag_type, Hatchery_status, Release_location))
+
+Test$Hatchery_status <- factor(Test$Hatchery_status)
+
+Test$Release_location <- factor(Test$Release_location)
+
+str(Test)
+
+Test <- Test[, c("Hatchery_status", 
                  "Length", 
                  "Release_date_time", 
                  "Porter Side Channel",
@@ -368,6 +382,8 @@ Test2 <- Test[, c("Hatchery_status",
                  "Lower Green Barge 2",
                  "Duwamish People's Park")]
 
+
+?data.frame
 Test2[, ch := as.character(paste0(`Porter Side Channel`, 
                                  `Lower Russel Backwater`, 
                                  `Lower Green Barge 1`,
@@ -393,7 +409,7 @@ Test <- Test[, c(1,4)]
 Test2 <- (as.data.frame(Test))
 
 str(Test)
-Test_process <- process.data(data = Test2, model = "CJS", groups = "Hatchery_status", accumulate = TRUE)
+Test_process <- process.data(data = Test, model = "CJS")
 warnings()
 warnings()
 
@@ -417,9 +433,11 @@ cjs.test <- crm(Test_process, Test.ddl, model.parameters = list(Phi = Phi.origin
 ##
 
 data(dipper)
+str(dipper)
 # Add a dummy weight field which are random values from 1 to 10
   set.seed(123)
 dipper$weight=round(runif(nrow(dipper),0,9),0)+1
+
 # Add Flood covariate
 Flood=matrix(rep(c(0,1,1,0,0,0),each=nrow(dipper)),ncol=6)
 colnames(Flood)=paste("Flood",1:6,sep="")
