@@ -11,7 +11,6 @@ if(!require(DBI)){install.packages('DBI')}; library(DBI) # For database connecti
 if(!require(dataRetrieval)){install.packages('dataRetrieval')}; library(dataRetrieval) # USGS data retrieval functions
 if(!require(ggplot2)){install.packages('ggplot2')}; library(ggplot2) # For pretty plotting
 if(!require(marked)){install.packages('marked')}; library(marked) # For mark-recapture modeling
-if(!require(rjags)){install.packages('rjags')}; library(rjags) # For fitting Bayesian models using JAGS
 
 
 #### Connect to the PIT-tag database and query 2024 data ####
@@ -76,7 +75,7 @@ dbDisconnect(DB_conn)
 
 # Convert detections to a data.table and examine these data
 
-Detections <- data.table(Detections); str(Detections)
+setDT(Detections); str(Detections)
 
 Detections[, .N, by = .(Array, Record_type)]
 
@@ -97,7 +96,7 @@ Detections_summary <- Detections[Record_type == "Tag", .(.N,
 
 # Convert the deployed tags to a data.table and examine these data
 
-Deployed <- data.table(Deployed); str(Deployed)
+setDT(Deployed); str(Deployed)
 
 Deployed[, .N, by = .(Release_FK, Release_location, Release_date_time, Species, Hatchery_status)]
 
@@ -133,7 +132,7 @@ Merged[, Tag_type := factor(case_match(Tag_type, "3D6" ~ "9mm", "3DD" ~ "12mm", 
 Merged[, .N, by = Tag_type]
 
 
-#### Visualize the duration of time tagged Chinook spend at Porter, Lower Russel, and Duwamish People's park ####
+#### Visualize the duration of time tagged Chinook spend at Porter, Lower Russel, and Duwamish People's Park ####
 
 Duration <- Merged[Species == "Chinook" & Detected == 1, ]
 
@@ -240,6 +239,69 @@ Travel_time_length_plot <- ggplot(data = Travel_times, mapping = aes(y = Travel_
 ggsave(filename = "Travel_times_length.tiff", plot = Travel_time_length_plot, device = "tiff", path = "R/Output",
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
 
+
+#### Compare fork lengths and release timing of Chinook that were detected and not detected ####
+
+# Add a variable that indicates if a fish was detected in a yes/no format
+
+Merged[, Detected_logical := factor(case_match(Detected, 1 ~ "Yes", 0 ~ "No"))]
+
+
+# Subset to only releases from Palmer and the screw trap
+
+Variable_comp <- Merged[Release_location %in% c("WDFW Screw Trap", "Palmer Ponds Outlet"), ]
+
+
+# Subset to only barge detections and non-detects
+
+Variable_comp <- Variable_comp[Array %in% c("Lower Green Barge 1", "Lower Green Barge 2", NA), ]
+
+
+# Plot fork lengths vs. detection status
+
+Length_comp <- ggplot(data = Variable_comp, mapping = aes(y = Length, x = Detected_logical)) +
+                      geom_violin(fill = 'steelblue') +
+                      facet_wrap(vars(Tag_type, Release_location)) +
+                      labs(x = "Detected at the barges?", y = "Fork length (mm)") +
+                      theme_bw()
+
+ggsave(filename = "Length_comparison.tiff", plot = Length_comp, device = "tiff", path = "R/Output",
+       width = 6.5, height = 5.5, units = "in", dpi = 400, compression = 'lzw')
+
+
+# Plot deployment timing vs. detection status
+
+Date_comp <- ggplot(data = Variable_comp, mapping = aes(y = Release_date_time, x = Detected_logical)) +
+                    geom_violin(fill = 'steelblue') +
+                    facet_wrap(vars(Tag_type, Release_location)) +
+                    labs(x = "Detected at the barges?", y = "Release timing") +
+                    theme_bw()
+
+ggsave(filename = "Date_comparison.tiff", plot = Date_comp, device = "tiff", path = "R/Output",
+       width = 6.5, height = 5.5, units = "in", dpi = 400, compression = 'lzw')
+
+
+#### Load Green River flow data ####
+
+USGS_flow <- readNWISdv(siteNumbers = "12113000",
+                        parameterCd = "00060",
+                        startDate = "2024-03-01",
+                        endDate = "2024-06-30",
+                        statCd = "00003")
+
+setDT(USGS_flow)
+
+names(USGS_flow)
+
+names(USGS_flow) <- c("Agency", "Site_ID", "Date", "Mean_flow", "Status")
+
+
+# Plot flow data (need to figure out how to add counts of released fish on different dates)
+
+ggplot(data = USGS_flow, mapping = aes(y = Mean_flow, x = Date)) +
+  geom_line(col = 'steelblue', linewidth = 2) +
+  labs(x = "Date", y = "River flow @ Auburn (cfs)") +
+  theme_bw()
 
 #### Reshape the merged data into a format for mark re-capture modeling ####
 
