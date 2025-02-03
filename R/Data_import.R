@@ -121,6 +121,11 @@ Merged <- merge(x = Deployed, y = Detections_summary, by = "Hex_tag_ID", all.x =
 Merged[, Detected := ifelse(is.na(Merged$N), 0, 1)]
 
 
+# Add a variable that indicates if a tag was detected in a yes/no format
+
+Merged[, Detected_logical := factor(case_match(Detected, 1 ~ "Yes", 0 ~ "No"))]
+
+
 # Add a tag-type variable
 
 Merged[, Tag_type := substr(Hex_tag_ID, start = 1, stop = 3)]
@@ -240,14 +245,9 @@ ggsave(filename = "Travel_times_length.tiff", plot = Travel_time_length_plot, de
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
 
 
-#### Compare fork lengths and release timing of Chinook that were detected and not detected ####
+#### Compare lengths and release timing of Chinook that were detected and not detected at the barges ####
 
-# Add a variable that indicates if a fish was detected in a yes/no format
-
-Merged[, Detected_logical := factor(case_match(Detected, 1 ~ "Yes", 0 ~ "No"))]
-
-
-# Subset to only releases from Palmer and the screw trap
+# Subset to releases from Palmer and the screw trap
 
 Variable_comp <- Merged[Release_location %in% c("WDFW Screw Trap", "Palmer Ponds Outlet"), ]
 
@@ -286,7 +286,7 @@ ggsave(filename = "Date_comparison.tiff", plot = Date_comp, device = "tiff", pat
 USGS_flow <- readNWISdv(siteNumbers = "12113000",
                         parameterCd = "00060",
                         startDate = "2024-03-01",
-                        endDate = "2024-06-30",
+                        endDate = "2024-07-05",
                         statCd = "00003")
 
 setDT(USGS_flow)
@@ -296,12 +296,29 @@ names(USGS_flow)
 names(USGS_flow) <- c("Agency", "Site_ID", "Date", "Mean_flow", "Status")
 
 
-# Plot flow data (need to figure out how to add counts of released fish on different dates)
+# Summarize the number of fish deployed for each release location and release date
 
-ggplot(data = USGS_flow, mapping = aes(y = Mean_flow, x = Date)) +
-  geom_line(col = 'steelblue', linewidth = 2) +
-  labs(x = "Date", y = "River flow @ Auburn (cfs)") +
-  theme_bw()
+Deployed_summary <- Deployed[, .N, by = .(Release_date = as_date(Release_date_time), Release_location, Species)]
+
+
+# Plot flow data and number of fish released on different dates
+
+Flow_plot <- ggplot(data = Deployed_summary, mapping = aes(y = N, x = Release_date)) +
+                    geom_point(aes(col = Release_location)) +
+                    geom_line(data = USGS_flow, aes(y = Mean_flow-450, x = Date), col = 'steelblue', linewidth = 1) +
+                    labs(x = "Date", col = "Release location") +
+                    scale_y_continuous(name = "Number released", 
+                    sec.axis = sec_axis(~.+450, name = "Green River flow @ Auburn (cfs)")) +
+                    theme_bw()
+  
+ggsave(filename = "Flow_plot.tiff", plot = Flow_plot, device = "tiff", path = "R/Output",
+       width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
+
+
+# Calculate a forward-looking 10-day rolling average of daily mean flows
+
+USGS_flow[, Ten_day_mean := frollmean(x = Mean_flow, n = 10, fill = NA, align = "left", algo = "exact")]
+
 
 #### Reshape the merged data into a format for mark re-capture modeling ####
 
