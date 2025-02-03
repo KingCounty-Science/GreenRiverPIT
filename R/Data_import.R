@@ -346,20 +346,36 @@ For_modeling[, Array := factor(Array, levels = c("Porter Side Channel",
 levels(For_modeling$Array)
 
 
+# Omit releases from Lower Russel
+
+For_modeling[, .N, by = Release_location]
+
+For_modeling <- For_modeling[!(Release_location %in% c("Lower Russel Backwater", "Lower Russel Alcoves")), ]
+
+
 # Drop 8mm tags
 
 For_modeling <- For_modeling[Tag_type != "8mm", ]
 
 
-# Create a day-of-the-year release variable
+# Create date (no time) and day-of-the-year release variables
 
 For_modeling[, DOY := yday(Release_date_time)]
+For_modeling[, Release_date := as_date(Release_date_time)]
+
+
+# Add the rolling average flow variable to the 'For_modeling' data.table
+
+Flow_join <- USGS_flow[, c("Date", "Ten_day_mean")]
+
+For_modeling <- merge(x = For_modeling, y = Flow_join, by.x = "Release_date", by.y = "Date", all.x = TRUE)
 
 
 # Convert data to wide-format
 
 All_wide <- dcast(data = For_modeling, Hex_tag_ID + Dec_tag_ID + Tag_type + Release_FK + Release_location + Release_type + 
-                    Release_date_time + DOY + Species + Hatchery_status + Length ~ Array, value.var = "Detected")
+                    Release_date + DOY + Species + Hatchery_status + Length + Ten_day_mean ~ Array, value.var = "Detected")
+
 
 # Drop the NA variable
 
@@ -379,178 +395,85 @@ All_wide[is.na(`Lower Green Barge 2`), `Lower Green Barge 2` := 0]
 All_wide[is.na(`Duwamish People's Park`), `Duwamish People's Park` := 0]
 
 
-# Split wide data into experimental and efficiency fish
+# Add a capture history variable, adding in a capture event for the initial taggin of each fish
 
-Experimental_wide <- All_wide[Release_type == "Experimental", ]
+All_wide[, ch := as.character(paste0("1", `Porter Side Channel`, 
+                                          `Lower Russel Backwater`, 
+                                          `Lower Green Barge 1`,
+                                          `Lower Green Barge 2`,
+                                          `Duwamish People's Park`))]
 
-Efficiency_wide <- All_wide[Release_type == "Efficiency", ]
+
+# Create a new data.table that is a subset of variables from 'All_wide' for use in mark-recapture-modelling
+
+MRM_data <- with(All_wide, data.table(ch, 
+                                      Tag_type = factor(Tag_type),
+                                      Release_location = factor(Release_location),
+                                      Release_type = factor(Release_type),
+                                      Release_date,
+                                      Release_DOY = DOY,
+                                      Species = factor(Species),
+                                      Hatchery_status = factor(Hatchery_status),
+                                      Length,
+                                      Ten_day_mean))
+
+str(MRM_data)
+
+
+# Split MRM data into experimental and efficiency fish
+
+Experimental_MRM <- MRM_data[Release_type == "Experimental", ]
+Experimental_MRM[, Release_type := NULL]
+
+Efficiency_MRM <- MRM_data[Release_type == "Efficiency", ]
+Efficiency_MRM[, Release_type := NULL]
 
 
 # Split the experimental release data into Chinook and Coho releases
 
-Experimental_wide_chinook <- Experimental_wide[Species == "Chinook", ]
+Experimental_MRM_chinook <- Experimental_MRM[Species == "Chinook", ]
+Experimental_MRM_chinook[, Species := NULL]
 
-Experimental_wide_coho <- Experimental_wide[Species == "Coho", ]
-
-str(Experimental_wide_chinook)
-
-#### Experiment with constructing CJS models (This is currently a mess) ####
-
-data(dipper)
-head(dipper)
-str(dipper)
-
-cjs.m1 <- crm(dipper)
-cjs.m1
-
-cjs.m1 <- cjs.hessian(cjs.m1)
-
-cjs.m1
-
-predict(cjs.m1, SE = TRUE,)
-
-plogis(cjs.m1$results$beta$Phi)
-
-plogis(cjs.m1$results$beta$p)
-
-dipper.proc <- process.data(dipper, 
-                            group = "sex")
-
-dipper.proc$data
-
-?process.data
-
-dipper.ddl <- make.design.data(dipper.proc)
-
-# Outine formulas for each parameter
-Phi.dot <- list(formula=~1)  # ~1 is always a constant (or single estimate)
-Phi.sex <- list(formula=~sex) # This formula will have an intercept (for females) and an estimate for the difference between females and males
-p.sex <- list(formula=~sex) # Be careful of case-sensitive names. Use the exact group column that was in data
-
-# Make new model (using design data) with constant survival, but different detection probabilities between sexes
-cjs.m2 <- crm(dipper.proc, 
-              dipper.ddl,
-              model.parameters = list(Phi = Phi.dot, 
-                                      p = p.sex),
-              accumulate = FALSE)
-## 
-
-cjs.m2
+Experimental_MRM_coho <- Experimental_MRM[Species == "Coho", ]
+Experimental_MRM_coho[, Species := NULL]
 
 
-Experimental_wide_chinook[, ch := as.character(paste0(`Porter Side Channel`, 
-                                                      `Lower Russel Backwater`, 
-                                                      `Lower Green Barge 1`,
-                                                      `Lower Green Barge 2`,
-                                                      `Duwamish People's Park`))]
+#### Experiment with constructing CJS models  ####
 
-Test <- with(data = Experimental_wide_chinook, data.frame(ch, Length, DOY, Tag_type, Hatchery_status, Release_location))
+Test_subset <- data.table(ch = Experimental_MRM_chinook$ch, Tag_type = Experimental_MRM_chinook$Tag_type)
 
-Test$Hatchery_status <- factor(Test$Hatchery_status)
+test.proc <- process.data(Test_subset, group = "Tag_type")
 
-Test$Release_location <- factor(Test$Release_location)
+test.ddl <- make.design.data(test.proc)
 
-str(Test)
+Phi.type <- list(formula=~Tag_type)
+P.type <- list(formula=~Tag_type)
 
-Test <- Test[, c("Hatchery_status", 
-                 "Length", 
-                 "Release_date_time", 
-                 "Porter Side Channel",
-                 "Lower Russel Backwater",
-                 "Lower Green Barge 1",
-                 "Lower Green Barge 2",
-                 "Duwamish People's Park")]
+test.pro <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.type, p = P.type), accumulate = FALSE)
 
+cjs.test1
 
-?data.frame
-Test2[, ch := as.character(paste0(`Porter Side Channel`, 
-                                 `Lower Russel Backwater`, 
-                                 `Lower Green Barge 1`,
-                                 `Lower Green Barge 2`,
-                                 `Duwamish People's Park`))]
-names(Test2)
-
-str(Test2)
-
-Test[,c("Porter Side Channel", 
-     "Lower Russel Backwater", 
-     "Lower Green Barge 1",
-     "Lower Green Barge 2",
-     "Duwamish People's Park") := NULL]
-
-#Test$Release_location <- as.factor(Test$Release_location)
-
-Test$Hatchery_status <- as.factor(Test$Hatchery_status)
-
-Test <- Test[!(is.na(Length)), ]
-
-Test <- Test[, c(1,4)]
-Test2 <- (as.data.frame(Test))
-
-str(Test)
-Test_process <- process.data(data = Test, model = "CJS")
-warnings()
-warnings()
-
-Test_process$data
-
-Test.ddl <- make.design.data(Test_process)
-
-Test.ddl$design.parameters
-
-Phi.location <- list(formula ~ Release_location)
-Phi.origin <- list(formula ~ Hatchery_status)
-Phi.time <- list(formula ~ time)
-
-p.location <- list(formula ~ Release_location)
-p.origin <- list(formula ~ Hatchery_status)
-
-p.dot <- list(formula ~ 1)
-
-cjs.test <- crm(Test_process, Test.ddl, model.parameters = list(Phi = Phi.origin, p = p.dot))
-
+# Need to estimate missing fork lengths # Do this earlier
 ##
 
-data(dipper)
-str(dipper)
-# Add a dummy weight field which are random values from 1 to 10
-  set.seed(123)
-dipper$weight=round(runif(nrow(dipper),0,9),0)+1
+test.proc2 <- process.data(data = Experimental_MRM_chinook, 
+                           model = "CJS",
+                           groups = c("Tag_type", "Release_location", "Hatchery_status"), 
+                           accumulate = FALSE)
 
-# Add Flood covariate
-Flood=matrix(rep(c(0,1,1,0,0,0),each=nrow(dipper)),ncol=6)
-colnames(Flood)=paste("Flood",1:6,sep="")
-dipper=cbind(dipper,Flood)
+design.Phi <- list(static = c("Release_location", "Hatchery_status", "Release_DOY", "Ten_day_mean"))
 
-# Add td covariate, but exclude first release as a capture
-  # splitCH and process.ch are functions in the marked package
-  td=splitCH(dipper$ch)
-  
-td=td[,1:6]
-releaseocc=process.ch(dipper$ch)$first
+design.p <- list(static = c("Tag_type", "Release_DOY", "Ten_day_mean"))
 
-releaseocc=cbind(1:length(releaseocc),releaseocc)
-releaseocc=releaseocc[releaseocc[,2]<nchar(dipper$ch[1]),]
-td[releaseocc]=0
-colnames(td)=paste("td",2:7,sep="")
-dipper=cbind(dipper,td)
-# show names
-  names(dipper)
-  
-  # Process data
-    dipper.proc=process.data(dipper)
-  
-  # Create design data with static and time varying covariates
-    design.Phi=list(static=c("weight"),time.varying=c("Flood"))
-  design.p=list(static=c("sex"),time.varying=c("td"), age.bins=c(0,1,20))
-  
-  design.parameters=list(Phi=design.Phi, p=design.p)
-  ddl=make.design.data(dipper.proc,parameters=design.parameters)
-  names(ddl$Phi)
-  names(ddl$p)
+design.parameters <- list(Phi = design.Phi, p = design.p)
 
-  
-  Phi.sfw=list(formula=~Flood+weight)
-  p.ast=list(formula=~age+sex+td)
-  model=crm(dipper.proc,ddl,hessian=TRUE, model.parameters=list(Phi=Phi.sfw,p=p.ast))
-  model
+test.ddl2 <- make.design.data(test.proc2, parameters = design.parameters)
+
+Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Ten_day_mean)
+
+p.all <- list(formula=~Tag_type + Release_DOY + Ten_day_mean)
+
+cjs.test2 <- crm(test.proc2, ddl = test.ddl2, model.parameters = list(Phi = Phi.all, p = p.all),
+                 hessian = TRUE, accumulate = FALSE)
+
+cjs.test2
