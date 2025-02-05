@@ -15,9 +15,8 @@ if(!require(marked)){install.packages('marked')}; library(marked) # For mark-rec
 
 #### Connect to the PIT-tag database and query 2024 data ####
 
-DB_conn <- dbConnect(odbc::odbc(),
-                     .connection_string = "Driver={Microsoft Access Driver (*.mdb, *.accdb)};
-                 DBQ=P:/GregersenC/WRIA9/PIT_STUDIES/PIT_Database/Backend/PIT_tag_database_v1.0_be.accdb")
+DB_conn <- dbConnect(odbc::odbc(), .connection_string = "Driver={Microsoft Access Driver (*.mdb, *.accdb)};
+                      DBQ=P:/GregersenC/WRIA9/PIT_STUDIES/PIT_Database/Backend/PIT_tag_database_v1.0_be.accdb")
 
 dbListTables(DB_conn)
 
@@ -155,7 +154,7 @@ ggsave(filename = "Duration.tiff", plot = Duration.plot, device = "tiff", path =
        width = 6.5, height = 4.0, units = "in", dpi = 400, compression = 'lzw')
 
 
-#### Visualize travel times between releases to detection at the different arrays ####
+#### Visualize travel times from release to detection at different arrays ####
 
 Travel_times <- Merged[Detected == 1, .(Travel_time = round(as.numeric((First - Release_date_time)/86400), 3)), 
                        by = .(Hex_tag_ID, Release_date_time, Species, Length, Release_location, Array)]
@@ -187,7 +186,8 @@ Travel_times[, .N, by = Array]
 Travel_times <- Travel_times[Array != "WDFW Screw Trap", ]
 
 
-# Create a new array variable that merges the two barges and two TBIOS locations, then order the location from upstream to downstream
+# Create a new array variable that merges the two barges and two TBIOS locations, 
+# then order the locations from upstream to downstream
 
 Travel_times[, Array := factor(Array)]; levels(Travel_times$Array)
 
@@ -198,7 +198,6 @@ Travel_times[, Array_combined := as.factor(case_match(Array, c("Lower Green Barg
                                                              "Porter Side Channel" ~ "Porter",
                                                              .default = Array))]
 
-levels(Travel_times$Array_combined)
 Travel_times[, .N, by = Array_combined]
 
 Travel_times[, Array_combined := factor(Array_combined, levels = c("Porter",
@@ -301,13 +300,18 @@ names(USGS_flow) <- c("Agency", "Site_ID", "Date", "Mean_flow", "Status")
 Deployed_summary <- Deployed[, .N, by = .(Release_date = as_date(Release_date_time), Release_location, Species)]
 
 
+# Drop the fish deployed at Lower Russel
+
+Deployed_summary <- Deployed_summary[!(Release_location %in% c("Lower Russel Alcoves", "Lower Russel Backwater")), ]
+
+
 # Plot flow data and number of fish released on different dates
 
 Flow_plot <- ggplot(data = Deployed_summary, mapping = aes(y = N, x = Release_date)) +
                     geom_point(aes(col = Release_location)) +
                     geom_line(data = USGS_flow, aes(y = Mean_flow-450, x = Date), col = 'steelblue', linewidth = 1) +
                     labs(x = "Date", col = "Release location") +
-                    scale_y_continuous(name = "Number released", 
+                    scale_y_continuous(name = "Number released",
                     sec.axis = sec_axis(~.+450, name = "Green River flow @ Auburn (cfs)")) +
                     theme_bw()
   
@@ -395,7 +399,7 @@ All_wide[is.na(`Lower Green Barge 2`), `Lower Green Barge 2` := 0]
 All_wide[is.na(`Duwamish People's Park`), `Duwamish People's Park` := 0]
 
 
-# Add a capture history variable, adding in a capture event for the initial taggin of each fish
+# Add a capture history variable, adding in a capture event for the initial tagging of each fish
 
 All_wide[, ch := as.character(paste0("1", `Porter Side Channel`, 
                                           `Lower Russel Backwater`, 
