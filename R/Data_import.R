@@ -414,7 +414,6 @@ MRM_data <- with(All_wide, data.table(ch,
                                       Tag_type = factor(Tag_type),
                                       Release_location = factor(Release_location),
                                       Release_type = factor(Release_type),
-                                      Release_date,
                                       Release_DOY = DOY,
                                       Species = factor(Species),
                                       Hatchery_status = factor(Hatchery_status),
@@ -444,40 +443,60 @@ Experimental_MRM_coho[, Species := NULL]
 
 #### Experiment with constructing CJS models  ####
 
-Test_subset <- data.table(ch = Experimental_MRM_chinook$ch, Tag_type = Experimental_MRM_chinook$Tag_type)
-
-test.proc <- process.data(Test_subset, group = "Tag_type")
-
-test.ddl <- make.design.data(test.proc)
-
-Phi.type <- list(formula=~Tag_type)
-P.type <- list(formula=~Tag_type)
-
-test.pro <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.type, p = P.type), accumulate = FALSE)
-
-cjs.test1
-
-# Need to estimate missing fork lengths # Do this earlier
-##
-
-test.proc2 <- process.data(data = Experimental_MRM_chinook, 
+test.proc <- process.data(data = Experimental_MRM_chinook, 
                            model = "CJS",
                            groups = c("Tag_type", "Release_location", "Hatchery_status"), 
                            accumulate = FALSE)
 
-design.Phi <- list(static = c("Release_location", "Hatchery_status", "Release_DOY", "Ten_day_mean"))
+design.Phi <- list(c("Release_location", "Hatchery_status", "Release_DOY", "Ten_day_mean", "time"))
 
-design.p <- list(static = c("Tag_type", "Release_DOY", "Ten_day_mean"))
+design.p <- list(c("Tag_type", "time"))
 
 design.parameters <- list(Phi = design.Phi, p = design.p)
 
-test.ddl2 <- make.design.data(test.proc2, parameters = design.parameters)
+test.ddl <- make.design.data(test.proc, parameters = design.parameters)
 
-Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Ten_day_mean)
+Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Ten_day_mean + time)
 
-p.all <- list(formula=~Tag_type + Release_DOY + Ten_day_mean)
+p.all <- list(formula=~Tag_type + time)
 
-cjs.test2 <- crm(test.proc2, ddl = test.ddl2, model.parameters = list(Phi = Phi.all, p = p.all),
+cjs.test <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.all, p = p.all),
                  hessian = TRUE, accumulate = FALSE)
 
-cjs.test2
+cjs.test
+
+predict(cjs.test)
+
+#####
+
+new.proc <- process.data(data = Experimental_MRM_chinook, 
+                          model = "CJS",
+                          groups = c("Tag_type", "Release_location", "Hatchery_status"),
+                          accumulate = FALSE)
+
+new.ddl <- make.design.data(new.proc)
+
+fit.models <- function()
+  {
+  Phi.array <- list(formula=~time)
+  Phi.location <- list(formula=~Release_location)
+  Phi.hatchery <- list(formula=~Hatchery_status)
+  Phi.flow <- list(formula=~Ten_day_mean)
+  Phi.DOY <- list(formula=~Release_DOY)
+  Phi.plus <- list(formula=~time + Release_DOY + Hatchery_status)
+  
+  p.array <- list(formula=~time)
+  p.type <- list(formula=~Tag_type)
+  p.flow <- list(formula=~Ten_day_mean)
+  p.DOY <- list(formula=~Release_DOY)
+    param.list <- create.model.list(c("Phi","p"))
+    results <- crm.wrapper(param.list, data = new.proc, ddl = new.ddl, external = FALSE, accumulate = FALSE)
+    return(results)
+    }
+
+new.models <- fit.models()
+
+new.models
+
+new.models[[17]]
+
