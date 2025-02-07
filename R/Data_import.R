@@ -408,6 +408,37 @@ All_wide[, ch := as.character(paste0("1", `Porter Side Channel`,
                                           `Duwamish People's Park`))]
 
 
+# Estimate the fork lengths of individual fish with missing fork lengths based on their release group
+
+Missing_lengths <- which(is.na(All_wide$Length)) # Create a row index for fish with missing lengths
+
+Missing_FK <- All_wide[is.na(Length), Release_FK] # Identify the release groups of the fish with missing lengths
+
+Missing_merge <- data.table(Index = Missing_lengths, Group = Missing_FK)
+
+
+# Check the mean lengths of the release groups with fish missing lengths
+
+for (i in Missing_FK) {
+  
+  print(All_wide[Release_FK == i, round(mean(Length, na.rm = TRUE), 1)])
+  
+}
+
+
+# Assign the fish missing lengths the mean length of their respective release group
+
+for (i in Missing_merge$Index) {
+
+  Group_mean <- All_wide[Release_FK == Missing_merge[Index == i, Group], round(mean(Length, na.rm = TRUE))]
+  
+  print(Group_mean)
+
+  All_wide[i, Length := Group_mean]
+
+}
+
+
 # Create a new data.table that is a subset of variables from 'All_wide' for use in mark-recapture-modelling
 
 MRM_data <- with(All_wide, data.table(ch, 
@@ -448,7 +479,7 @@ test.proc <- process.data(data = Experimental_MRM_chinook,
                            groups = c("Tag_type", "Release_location", "Hatchery_status"), 
                            accumulate = FALSE)
 
-design.Phi <- list(c("Release_location", "Hatchery_status", "Release_DOY", "Ten_day_mean", "time"))
+design.Phi <- list(c("Release_location", "Hatchery_status", "Release_DOY", "Length", "Ten_day_mean", "time"))
 
 design.p <- list(c("Tag_type", "time"))
 
@@ -456,7 +487,7 @@ design.parameters <- list(Phi = design.Phi, p = design.p)
 
 test.ddl <- make.design.data(test.proc, parameters = design.parameters)
 
-Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Ten_day_mean + time)
+Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Length + Ten_day_mean + time)
 
 p.all <- list(formula=~Tag_type + time)
 
