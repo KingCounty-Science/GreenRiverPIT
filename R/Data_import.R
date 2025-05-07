@@ -309,10 +309,10 @@ Deployed_summary <- Deployed_summary[!(Release_location %in% c("Lower Russel Alc
 
 Flow_plot <- ggplot(data = Deployed_summary, mapping = aes(y = N, x = Release_date)) +
                     geom_point(aes(col = Release_location)) +
-                    geom_line(data = USGS_flow, aes(y = Mean_flow-450, x = Date), col = 'steelblue', linewidth = 1) +
+                    geom_line(data = USGS_flow, aes(y = Mean_flow-500, x = Date), col = 'steelblue', linewidth = 1) +
                     labs(x = "Date", col = "Release location") +
                     scale_y_continuous(name = "Number released",
-                    sec.axis = sec_axis(~.+450, name = "Green River flow @ Auburn (cfs)")) +
+                    sec.axis = sec_axis(~.+500, name = "Green River flow @ Auburn (cfs)")) +
                     theme_bw()
   
 ggsave(filename = "Flow_plot.tiff", plot = Flow_plot, device = "tiff", path = "R/Output",
@@ -431,7 +431,7 @@ for (i in Missing_FK) {
 for (i in Missing_merge$Index) {
 
   Group_mean <- All_wide[Release_FK == Missing_merge[Index == i, Group], round(mean(Length, na.rm = TRUE))]
-  
+
   print(Group_mean)
 
   All_wide[i, Length := Group_mean]
@@ -498,6 +498,8 @@ cjs.test
 
 predict(cjs.test)
 
+new.proc$time.intervals
+
 #####
 
 new.proc <- process.data(data = Experimental_MRM_chinook, 
@@ -507,27 +509,87 @@ new.proc <- process.data(data = Experimental_MRM_chinook,
 
 new.ddl <- make.design.data(new.proc)
 
-fit.models <- function()
+# Modify 'time' variables into 'Array' variables for Phi and p
+
+new.ddl$Phi$Array <- factor(new.ddl$Phi$time)
+new.ddl$Phi$Array <- case_match(new.ddl$Phi$Array, "1" ~ "Porter", 
+                                                   "2" ~ "Lower Russel", 
+                                                   "3" ~ "Barges",
+                                                   "4" ~ "Barges",
+                                                   "5" ~ "People's Park")
+
+new.ddl$Phi$Array <- factor(new.ddl$Phi$Array, levels = c("Porter", "Lower Russel", "Barges", "People's Park"))
+levels(new.ddl$Phi$Array)
+
+
+new.ddl$p$Array <- factor(new.ddl$p$time)
+new.ddl$p$Array <- case_match(new.ddl$p$Array, "2" ~ "Porter", 
+                                                "3" ~ "Lower Russel", 
+                                                "4" ~ "Barge 1",
+                                                "5" ~ "Barge 2",
+                                                "6" ~ "People's Park")
+
+new.ddl$p$Array <- factor(new.ddl$p$Array, levels = c("Porter", "Lower Russel", "Barge 1", "Barge 2", "People's Park"))
+levels(new.ddl$p$Array)
+
+
+fit.cjs.models <- function()
   {
-  Phi.array <- list(formula=~time)
-  Phi.location <- list(formula=~Release_location)
+  Phi.dot <- list(formula=~1)
+  Phi.array <- list(formula=~Array)
+  Phi.release <- list(formula=~Release_location)
   Phi.hatchery <- list(formula=~Hatchery_status)
   Phi.flow <- list(formula=~Ten_day_mean)
   Phi.DOY <- list(formula=~Release_DOY)
-  Phi.plus <- list(formula=~time + Release_DOY + Hatchery_status)
+  Phi.length <- list(formula=~Length)
   
-  p.array <- list(formula=~time)
+  p.dot <- list(formula=~1)
+  p.array <- list(formula=~Array)
   p.type <- list(formula=~Tag_type)
   p.flow <- list(formula=~Ten_day_mean)
   p.DOY <- list(formula=~Release_DOY)
+  p.flow <- list(formula=~Ten_day_mean)
+  p.length <- list(formula=~Length)
+  
     param.list <- create.model.list(c("Phi","p"))
     results <- crm.wrapper(param.list, data = new.proc, ddl = new.ddl, external = FALSE, accumulate = FALSE)
     return(results)
     }
 
-new.models <- fit.models()
+new.models <- fit.cjs.models()
 
 new.models
 
-new.models[[17]]
+new.models[[26]]
+
+
+fit.cjs.models2 <- function()
+{
+  Phi.array <- list(formula=~Array)
+  Phi.release <- list(formula=~Release_location)
+  Phi.hatchery <- list(formula=~Hatchery_status)
+  Phi.flow <- list(formula=~Ten_day_mean)
+  Phi.DOY <- list(formula=~Release_DOY)
+  Phi.length <- list(formula=~Length)
+  Phi.full <- list(formula=~Array + Release_location + Hatchery_status + Ten_day_mean + Release_DOY + Length)
+  
+  p.array <- list(formula=~Array)
+  p.type <- list(formula=~Tag_type)
+  p.flow <- list(formula=~Ten_day_mean)
+  p.DOY <- list(formula=~Release_DOY)
+  p.flow <- list(formula=~Ten_day_mean)
+  p.length <- list(formula=~Length)
+  p.full <- list(formula=~Array + Tag_type + Release_DOY + Ten_day_mean + Length)
+  
+  param.list <- create.model.list(c("Phi","p"))
+  results <- crm.wrapper(param.list, data = new.proc, ddl = new.ddl, external = FALSE, accumulate = FALSE)
+  return(results)
+}
+
+new.models2 <- fit.cjs.models2()
+
+new.models2
+
+new.models2[[19]]
+
 
