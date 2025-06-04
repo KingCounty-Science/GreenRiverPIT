@@ -93,6 +93,7 @@ Detections_summary <- Detections[Record_type == "Tag", .(.N,
                                  keyby = .(Hex_tag_ID, Array, Upload_FK)]
 
 
+
 # Convert the deployed tags to a data.table and examine these data
 
 setDT(Deployed); str(Deployed)
@@ -472,6 +473,13 @@ Experimental_MRM_coho <- Experimental_MRM[Species == "Coho", ]
 Experimental_MRM_coho[, Species := NULL]
 
 
+# Convert the numeric variables to z-scores
+
+#Experimental_MRM_chinook$Release_DOY <- scale(Experimental_MRM_chinook$Release_DOY)
+#Experimental_MRM_chinook$Length <- scale(Experimental_MRM_chinook$Length)
+#Experimental_MRM_chinook$Ten_day_mean <- scale(Experimental_MRM_chinook$Ten_day_mean)
+
+
 #### Experiment with constructing CJS models  ####
 
 test.proc <- process.data(data = Experimental_MRM_chinook, 
@@ -481,7 +489,7 @@ test.proc <- process.data(data = Experimental_MRM_chinook,
 
 design.Phi <- list(c("Release_location", "Hatchery_status", "Release_DOY", "Length", "Ten_day_mean", "time"))
 
-design.p <- list(c("Tag_type", "time"))
+design.p <- list(c("Tag_type", "Length", "time"))
 
 design.parameters <- list(Phi = design.Phi, p = design.p)
 
@@ -489,16 +497,13 @@ test.ddl <- make.design.data(test.proc, parameters = design.parameters)
 
 Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Length + Ten_day_mean + time)
 
-p.all <- list(formula=~Tag_type + time)
+p.all <- list(formula=~Tag_type + Release_DOY + Length + time)
 
 cjs.test <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.all, p = p.all),
                  hessian = TRUE, accumulate = FALSE)
 
 cjs.test
 
-predict(cjs.test)
-
-new.proc$time.intervals
 
 #####
 
@@ -508,6 +513,7 @@ new.proc <- process.data(data = Experimental_MRM_chinook,
                           accumulate = FALSE)
 
 new.ddl <- make.design.data(new.proc)
+
 
 # Modify 'time' variables into 'Array' variables for Phi and p
 
@@ -524,10 +530,10 @@ levels(new.ddl$Phi$Array)
 
 new.ddl$p$Array <- factor(new.ddl$p$time)
 new.ddl$p$Array <- case_match(new.ddl$p$Array, "2" ~ "Porter", 
-                                                "3" ~ "Lower Russel", 
-                                                "4" ~ "Barge 1",
-                                                "5" ~ "Barge 2",
-                                                "6" ~ "People's Park")
+                                               "3" ~ "Lower Russel", 
+                                               "4" ~ "Barge 1",
+                                               "5" ~ "Barge 2",
+                                               "6" ~ "People's Park")
 
 new.ddl$p$Array <- factor(new.ddl$p$Array, levels = c("Porter", "Lower Russel", "Barge 1", "Barge 2", "People's Park"))
 levels(new.ddl$p$Array)
@@ -542,25 +548,25 @@ fit.cjs.models <- function()
   Phi.flow <- list(formula=~Ten_day_mean)
   Phi.DOY <- list(formula=~Release_DOY)
   Phi.length <- list(formula=~Length)
+  Phi.release.array <- list(formula=~Release_location + Array)
   
   p.dot <- list(formula=~1)
   p.array <- list(formula=~Array)
   p.type <- list(formula=~Tag_type)
-  p.flow <- list(formula=~Ten_day_mean)
   p.DOY <- list(formula=~Release_DOY)
-  p.flow <- list(formula=~Ten_day_mean)
   p.length <- list(formula=~Length)
+  p.type.array <- list(formula=~Tag_type + Array)
   
-    param.list <- create.model.list(c("Phi","p"))
-    results <- crm.wrapper(param.list, data = new.proc, ddl = new.ddl, external = FALSE, accumulate = FALSE)
-    return(results)
+  param.list <- create.model.list(c("Phi","p"))
+  results <- crm.wrapper(param.list, data = new.proc, ddl = new.ddl, external = FALSE, accumulate = FALSE)
+  return(results)
     }
 
 new.models <- fit.cjs.models()
 
 new.models
 
-new.models[[26]]
+new.models[[48]]
 
 
 fit.cjs.models2 <- function()
@@ -579,7 +585,7 @@ fit.cjs.models2 <- function()
   p.DOY <- list(formula=~Release_DOY)
   p.flow <- list(formula=~Ten_day_mean)
   p.length <- list(formula=~Length)
-  p.full <- list(formula=~Array + Tag_type + Release_DOY + Ten_day_mean + Length)
+  p.full <- list(formula=~Array + Tag_type + Release_DOY + Length)
   
   param.list <- create.model.list(c("Phi","p"))
   results <- crm.wrapper(param.list, data = new.proc, ddl = new.ddl, external = FALSE, accumulate = FALSE)
@@ -590,6 +596,6 @@ new.models2 <- fit.cjs.models2()
 
 new.models2
 
-new.models2[[19]]
+new.models2[[22]]
 
-
+warnings()
