@@ -376,6 +376,19 @@ Flow_join <- USGS_flow[, c("Date", "Ten_day_mean")]
 For_modeling <- merge(x = For_modeling, y = Flow_join, by.x = "Release_date", by.y = "Date", all.x = TRUE)
 
 
+# Compare releases and detections
+
+Deployed_table <- Deployed_summary[Species == "Chinook", .(Total_deployed = sum(N)), by = Release_location]
+
+Detections_table <- For_modeling[Species == "Chinook", .(Detections = sum(Detected)), by = .(Release_location, Array)]
+
+Detections_table <- Detections_table[!is.na(Array), ] # Drop NAs
+
+Deployed_detection_table <- merge(x = Detections_table, y = Deployed_table, by = "Release_location", all = TRUE)
+
+Deployed_detection_table[, Percent_detected := round(100*(Detections/Total_deployed),2)]
+
+
 # Convert data to wide-format
 
 All_wide <- dcast(data = For_modeling, Hex_tag_ID + Dec_tag_ID + Tag_type + Release_FK + Release_location + Release_type + 
@@ -487,20 +500,38 @@ test.proc <- process.data(data = Experimental_MRM_chinook,
                            groups = c("Tag_type", "Release_location", "Hatchery_status"), 
                            accumulate = FALSE)
 
-design.Phi <- list(c("Release_location", "Hatchery_status", "Release_DOY", "Length", "Ten_day_mean", "time"))
+test.ddl <- make.design.data(test.proc)
 
-design.p <- list(c("Tag_type", "Length", "time"))
 
-design.parameters <- list(Phi = design.Phi, p = design.p)
+# Modify 'time' variables into 'Array' variables for Phi and p
 
-test.ddl <- make.design.data(test.proc, parameters = design.parameters)
+test.ddl$Phi$Array <- test.ddl$Phi$time
+test.ddl$Phi$Array <- case_match(test.ddl$Phi$Array, "1" ~ "Porter", 
+                                                     "2" ~ "Lower Russel", 
+                                                     "3" ~ "Barges",
+                                                     "4" ~ "Barges",
+                                                     "5" ~ "People's Park")
 
-Phi.all <- list(formula=~Release_location + Hatchery_status + Release_DOY + Length + Ten_day_mean + time)
+test.ddl$Phi$Array <- factor(test.ddl$Phi$Array, levels = c("Porter", "Lower Russel", "Barges", "People's Park"))
+levels(test.ddl$Phi$Array)
 
-p.all <- list(formula=~Tag_type + Release_DOY + Length + time)
+test.ddl$p$Array <- test.ddl$p$time
+test.ddl$p$Array <- case_match(test.ddl$p$Array, "2" ~ "Porter", 
+                                                 "3" ~ "Lower Russel", 
+                                                 "4" ~ "Barge 1",
+                                                 "5" ~ "Barge 2",
+                                                 "6" ~ "People's Park")
 
-cjs.test <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.all, p = p.all),
-                 hessian = TRUE, accumulate = FALSE)
+test.ddl$p$Array <- factor(test.ddl$p$Array, levels = c("Porter", "Lower Russel", "Barge 1", "Barge 2", "People's Park"))
+levels(test.ddl$p$Array)
+
+
+Phi.select <- list(formula=~Release_location + Array)
+
+p.select <- list(formula=~Tag_type + Release_DOY + Array)
+
+cjs.test <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
+                 hessian = TRUE, accumulate = FALSE, method = "Nelder-Mead")
 
 cjs.test
 
@@ -517,7 +548,7 @@ new.ddl <- make.design.data(new.proc)
 
 # Modify 'time' variables into 'Array' variables for Phi and p
 
-new.ddl$Phi$Array <- factor(new.ddl$Phi$time)
+new.ddl$Phi$Array <- new.ddl$Phi$time
 new.ddl$Phi$Array <- case_match(new.ddl$Phi$Array, "1" ~ "Porter", 
                                                    "2" ~ "Lower Russel", 
                                                    "3" ~ "Barges",
@@ -528,7 +559,7 @@ new.ddl$Phi$Array <- factor(new.ddl$Phi$Array, levels = c("Porter", "Lower Russe
 levels(new.ddl$Phi$Array)
 
 
-new.ddl$p$Array <- factor(new.ddl$p$time)
+new.ddl$p$Array <- new.ddl$p$time
 new.ddl$p$Array <- case_match(new.ddl$p$Array, "2" ~ "Porter", 
                                                "3" ~ "Lower Russel", 
                                                "4" ~ "Barge 1",
