@@ -137,6 +137,13 @@ Merged[, Tag_type := factor(case_match(Tag_type, "3D6" ~ "9mm", "3DD" ~ "12mm", 
 Merged[, .N, by = Tag_type]
 
 
+# Summarize the number of detections (and non-detects) by Release location, tag type, and array
+# Exclude the small number of fish tagged and released at Lower Russel
+
+Merged[!(Release_location %in% c("Lower Russel Alcoves", "Lower Russel Backwater")), .N, 
+       keyby = .(Release_location, Tag_type, Array)]
+
+
 #### Visualize the duration of time tagged Chinook spend at Porter, Lower Russel, and Duwamish People's Park ####
 
 Duration <- Merged[Species == "Chinook" & Detected == 1, ]
@@ -388,6 +395,8 @@ Deployed_detection_table <- merge(x = Detections_table, y = Deployed_table, by =
 
 Deployed_detection_table[, Percent_detected := round(100*(Detections/Total_deployed),2)]
 
+print(Deployed_detection_table)
+
 
 # Convert data to wide-format
 
@@ -420,6 +429,13 @@ All_wide[, ch := as.character(paste0("1", `Porter Side Channel`,
                                           `Lower Green Barge 1`,
                                           `Lower Green Barge 2`,
                                           `Duwamish People's Park`))]
+
+
+# Generate summary values of detections at different arrays and for sequences of detection possibilities
+
+apply(All_wide[, `Porter Side Channel`:`Duwamish People's Park`], MARGIN = 2, FUN = sum)
+
+All_wide[, .N, by = ch]
 
 
 # Estimate the fork lengths of individual fish with missing fork lengths based on their release group
