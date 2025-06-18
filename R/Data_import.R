@@ -542,12 +542,12 @@ test.ddl$p$Array <- factor(test.ddl$p$Array, levels = c("Porter", "Lower Russel"
 levels(test.ddl$p$Array)
 
 
-Phi.select <- list(formula=~Release_location + Array)
+Phi.select <- list(formula=~Release_location + time)
 
-p.select <- list(formula=~Tag_type + Release_DOY + Array)
+p.select <- list(formula=~Tag_type + Release_DOY + time)
 
 cjs.test <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
-                 hessian = TRUE, accumulate = FALSE, method = "Nelder-Mead")
+                 hessian = TRUE, accumulate = FALSE)
 
 cjs.test
 
@@ -646,3 +646,54 @@ new.models2
 new.models2[[22]]
 
 warnings()
+
+
+##### Explore fitting MRM with only barge observations ####
+
+All_wide2 <- All_wide
+
+All_wide2[, ch := as.character(paste0("1", `Lower Green Barge 1`, `Lower Green Barge 2`))]
+
+# Create a new data.table that is a subset of variables from 'All_wide' for use in mark-recapture-modelling
+
+MRM_data <- with(All_wide2, data.table(ch, 
+                                      Tag_type = factor(Tag_type),
+                                      Release_location = factor(Release_location),
+                                      Release_DOY = DOY,
+                                      Species = factor(Species),
+                                      Hatchery_status = factor(Hatchery_status),
+                                      Length,
+                                      Ten_day_mean))
+
+str(MRM_data)
+
+
+# Exclude Coho
+
+MRM_data <- MRM_data[Species == "Chinook", ]
+MRM_data[, Species := NULL]
+
+MRM_data <- MRM_data[Release_location != "Tukwila Pedestrian Bridge", ]
+
+
+## Experiment with constructing CJS models  ##
+
+test2.proc <- process.data(data = MRM_data, 
+                          model = "CJS",
+                          groups = c("Tag_type", "Release_location", "Hatchery_status"), 
+                          accumulate = FALSE)
+
+test2.ddl <- make.design.data(test2.proc)
+
+
+Phi.select <- list(formula=~Release_location + time + Release_DOY + Length)
+
+p.select <- list(formula=~Tag_type + Release_DOY + time)
+
+cjs.test2 <- crm(test2.proc, ddl = test2.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
+                hessian = TRUE, accumulate = FALSE)
+
+cjs.test2
+
+plogis(-11.13 + 2.68)
+
