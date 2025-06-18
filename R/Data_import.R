@@ -438,6 +438,13 @@ apply(All_wide[, `Porter Side Channel`:`Duwamish People's Park`], MARGIN = 2, FU
 All_wide[, .N, by = ch]
 
 
+# Change the capture history variable to only include the two lower Green barges, plus the initial tagging.
+
+All_wide[, ch := as.character(paste0("1", `Lower Green Barge 1`, `Lower Green Barge 2`))]
+
+All_wide[, .N, by = ch]
+
+
 # Estimate the fork lengths of individual fish with missing fork lengths based on their release group
 
 Missing_lengths <- which(is.na(All_wide$Length)) # Create a row index for fish with missing lengths
@@ -482,6 +489,274 @@ MRM_data <- with(All_wide, data.table(ch,
                                       Ten_day_mean))
 
 str(MRM_data)
+
+
+##### Explore fitting cjs models with only the barge detections ####
+
+# Subset data to Chinook only
+
+MRM_data <- MRM_data[Species == "Chinook", ]
+MRM_data[, Species := NULL]
+MRM_data[, .N, by = ch]
+
+
+# Convert the numeric variables to z-scores
+
+#MRM_data$Release_DOY <- scale(MRM_data$Release_DOY)
+#MRM_data$Length <- scale(MRM_data$Length)
+#MRM_data$Ten_day_mean <- scale(MRM_data$Ten_day_mean)
+
+
+# Construct a series of cjs models for initial consideration
+
+bargecjs.proc <- process.data(data = MRM_data, model = "CJS",
+                              groups = c("Tag_type", "Release_location", "Hatchery_status"), 
+                              accumulate = FALSE)
+
+bargecjs.ddl <- make.design.data(bargecjs.proc)
+
+
+# Modify the 'time' variable into an 'Array' variables for Phi and p
+
+bargecjs.ddl$Phi$Array <- bargecjs.ddl$Phi$time
+bargecjs.ddl$Phi$Array <- case_match(bargecjs.ddl$Phi$Array, "1" ~ "Barge 1", "2" ~ "Barge 2")
+
+bargecjs.ddl$Phi$Array <- factor(bargecjs.ddl$Phi$Array, levels = c("Barge 1", "Barge 2"))
+levels(bargecjs.ddl$Phi$Array)
+
+bargecjs.ddl$p$Array <- bargecjs.ddl$p$time
+bargecjs.ddl$p$Array <- case_match(bargecjs.ddl$p$Array, "2" ~ "Barge 1", "3" ~ "Barge 2")
+
+bargecjs.ddl$p$Array <- factor(bargecjs.ddl$p$Array, levels = c("Barge 1", "Barge 2"))
+levels(bargecjs.ddl$p$Array)
+
+
+# Fit models that include a 'null' model, a 'base' model with release location and array for Phi and tag type and array for p,
+# and then models that include additional single variables along with the 'base' variables.
+
+fit.cjs.models <- function()
+{
+  Phi.dot <- list(formula=~1)
+  Phi.base <- list(formula=~Release_location + Array)
+  Phi.hatchery <- list(formula=~Release_location + Array + Hatchery_status)
+  Phi.flow <- list(formula=~Release_location + Array + Ten_day_mean)
+  Phi.DOY <- list(formula=~Release_location + Array + Release_DOY)
+  Phi.length <- list(formula=~Release_location + Array + Length)
+  
+  p.dot <- list(formula=~1)
+  p.base <- list(formula=~Tag_type + Array)
+  p.DOY <- list(formula=~Tag_type + Array + Release_DOY)
+  p.length <- list(formula=~Tag_type + Array + Length)
+  p.flow <- list(formula=~Tag_type + Array + Ten_day_mean)
+  
+  param.list <- create.model.list(c("Phi","p"))
+  results <- crm.wrapper(param.list, data = bargecjs.proc, ddl = bargecjs.ddl, external = FALSE, accumulate = FALSE)
+  return(results)
+}
+
+bargecjs.models <- fit.cjs.models()
+
+bargecjs.models
+
+bargecjs.models[13]
+
+
+# Compare the best performing model from above with models containing an additional single variable
+
+fit.cjs.models <- function()
+{
+  Phi.DOY <- list(formula=~Release_location + Array + Release_DOY)
+  Phi.DOY.hatchery <- list(formula=~Release_location + Array + Release_DOY + Hatchery_status)
+  Phi.DOY.flow <- list(formula=~Release_location + Array + Release_DOY + Ten_day_mean)
+  Phi.DOY.length <- list(formula=~Release_location + Array + + Release_DOY + Length)
+  
+  p.DOY <- list(formula=~Tag_type + Array + Release_DOY)
+  p.DOY.length <- list(formula=~Tag_type + Array + Release_DOY + Length)
+  
+  param.list <- create.model.list(c("Phi","p"))
+  results <- crm.wrapper(param.list, data = bargecjs.proc, ddl = bargecjs.ddl, external = FALSE, accumulate = FALSE)
+  return(results)
+}
+
+bargecjs.models.ex <- fit.cjs.models()
+
+bargecjs.models.ex
+
+bargecjs.models.ex[3]
+
+
+# Visualize predictions based off the simpler model that includes Array, Release location, and Release DOY 
+# for both Phi and p, plus tag type for p only.
+
+Phi.select <- list(formula=~Release_location + Array + Release_DOY)
+
+p.select <- list(formula=~Tag_type + Array + Release_DOY)
+
+bargecjs.simple <- crm(bargecjs.proc, ddl = bargecjs.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
+                       hessian = TRUE, accumulate = FALSE)
+
+bargecjs.simple
+
+bargecjs.pred <- predict(bargecjs.simple); predict(bargecjs.simple)
+
+bargecjs.Phi <- data.table(bargecjs.pred$Phi); setorder(bargecjs.Phi, Release_DOY)
+
+bargecjs.p <- data.table(bargecjs.pred$p); setorder(bargecjs.p, Release_DOY)
+
+
+# Plot predictions
+
+tiff(filename = "R/Output/CJS_predictions_simple.tiff", width = 6.5, height = 5.0, units = "in", pointsize = 10, compression = "lzw",
+     family = "sans",res = 400)
+
+par(mfrow = c(2,1), mar = c(2,5,1,2), oma = c(3,0,1,0))
+
+plot(bargecjs.Phi$estimate ~ bargecjs.Phi$Release_DOY, 
+     subset = bargecjs.Phi$Release_location == "WDFW Screw Trap" & bargecjs.Phi$Array == "Barge 1", 
+     ylim = c(0,1), xlim = c(80, 180), type = "l", lwd = 2, frame.plot = FALSE, col = "#8da0cb", xaxt = "n",
+     main = "Apparent survival from release to barge 1", ylab = "Apparent survival (Phi)", xlab = "")
+
+polygon(y = c(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", estimate] + 
+                bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", se], 
+              rev(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", estimate] -
+                    bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", se])),
+        x = c(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Release_DOY], 
+              rev(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Release_DOY])),
+        col = "#8da0cb50", border = NA)
+
+axis(side = 1, labels = F)
+
+legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
+       lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
+
+lines(bargecjs.Phi$estimate ~ bargecjs.Phi$Release_DOY, 
+       subset = bargecjs.Phi$Release_location == "Palmer Ponds Outlet" & bargecjs.Phi$Array == "Barge 1", 
+      col = "#fc8d62", lwd = 2)
+
+polygon(y = c(bargecjs.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", estimate] + 
+                bargecjs.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", se], 
+              rev(bargecjs.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", estimate] -
+                    bargecjs.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", se])),
+        x = c(bargecjs.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Release_DOY], 
+              rev(bargecjs.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Release_DOY])),
+        col = "#fc8d6250", border = NA)
+
+lines(bargecjs.Phi$estimate ~ bargecjs.Phi$Release_DOY, 
+      subset = bargecjs.Phi$Release_location == "Tukwila Pedestrian Bridge" & bargecjs.Phi$Array == "Barge 1", 
+      col = "#66c2a5", lwd = 2)
+
+polygon(y = c(bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", estimate] + 
+                bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", se], 
+              rev(bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", estimate] -
+                    bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", se])),
+        x = c(bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Release_DOY], 
+              rev(bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Release_DOY])),
+        col = "#66c2a550", border = NA)
+
+plot(bargecjs.p$estimate ~ bargecjs.p$Release_DOY, 
+     subset = bargecjs.p$Tag_type == "9mm" & bargecjs.p$Array == "Barge 1", 
+     ylim = c(0,1), xlim = c(80, 180), type = "l", lwd = 2, frame.plot = FALSE, col = "#e41a1c", ylab = "Detection probability (p)",
+     xlab = "Release day of year", main = "Detection probability at barge 1")
+
+polygon(y = c(bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", estimate] + 
+                bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", se], 
+              rev(bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", estimate] -
+                    bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", se])),
+        x = c(bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", Release_DOY], 
+              rev(bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", Release_DOY])),
+        col = "#e41a1c50", border = NA)
+
+lines(bargecjs.p$estimate ~ bargecjs.p$Release_DOY, 
+      subset = bargecjs.p$Tag_type == "12mm" & bargecjs.p$Array == "Barge 1", 
+      col = "#377eb8", lwd = 2)
+
+polygon(y = c(bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", estimate] + 
+                bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", se], 
+              rev(bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", estimate] -
+                    bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", se])),
+        x = c(bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", Release_DOY], 
+              rev(bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", Release_DOY])),
+        col = "#377eb850", border = NA)
+
+legend("topleft", legend = c("12mm", "9mm"),
+       lwd = 2, col = c("#377eb8", "#e41a1c"), bty = "n")
+
+mtext(text = "Release day of year", line = 1, outer = TRUE, side = 1)
+
+dev.off()
+
+
+####
+
+Vis.predictions <- expand.grid(Release_location = c("Palmer Ponds Outlet", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
+                               Array = c("Barge 1", "Barge 2"),
+                               Release_DOY = seq(from = 80, to = 176, by = 1),
+                               Tag_type = c("9mm", "12mm"),
+                               Ten_day_mean = 1000,
+                               Length = 80,
+                               Hatchery_status = "Hatchery origin")
+
+predict(bargecjs.simple, newdata = Vis.predictions)
+
+range(yday(Deployed_summary$Release_date))
+
+fit.cjs.models <- function()
+{
+  Phi.dot <- list(formula=~1)
+  Phi.base <- list(formula=~Release_location + time)
+  Phi.hatchery <- list(formula=~Release_location + time + Hatchery_status)
+  Phi.flow <- list(formula=~Release_location + time + Ten_day_mean)
+  Phi.DOY <- list(formula=~Release_location + time + Release_DOY)
+  Phi.length <- list(formula=~Release_location + time + Length)
+  
+  p.dot <- list(formula=~1)
+  p.base <- list(formula=~Tag_type + time)
+  p.DOY <- list(formula=~Tag_type + time + Release_DOY)
+  p.length <- list(formula=~Tag_type + time + Length)
+  
+  param.list <- create.model.list(c("Phi","p"))
+  results <- crm.wrapper(param.list, data = test2.proc, ddl = test2.ddl, external = FALSE, accumulate = FALSE)
+  return(results)
+}
+
+new2.models <- fit.cjs.models()
+
+predict(new2.models[11])
+
+
+####
+
+MRM_subset <- with(MRM_data, data.table(ch, 
+                                        Tag_type = factor(Tag_type),
+                                        Release_location = factor(Release_location),
+                                        Release_DOY = Release_DOY))
+
+
+test3.proc <- process.data(data = MRM_subset, 
+                           model = "CJS",
+                           groups = c("Tag_type", "Release_location"), 
+                           accumulate = FALSE)
+
+test3.ddl <- make.design.data(test3.proc)
+
+Phi.select <- list(formula=~Release_location + time + Release_DOY)
+
+p.select <- list(formula=~Tag_type + time + Release_DOY)
+
+cjs.test3 <- crm(test3.proc, ddl = test3.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
+                 hessian = TRUE, accumulate = FALSE)
+
+cjs.test3
+
+Vis.predictions <- expand.grid(Release_location = c("Palmer Ponds Outlet", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
+                               Release_DOY = seq(from = 80, to = 176, by = 1),
+                               Tag_type = c("9mm", "12mm"))
+
+names(Vis.predictions)[2] <- "time"
+
+predict(cjs.test3, newdata = Vis.predictions)
+?predict.crm
+
 
 
 # Split MRM data into experimental and efficiency fish
@@ -542,14 +817,16 @@ test.ddl$p$Array <- factor(test.ddl$p$Array, levels = c("Porter", "Lower Russel"
 levels(test.ddl$p$Array)
 
 
-Phi.select <- list(formula=~Release_location + time)
+Phi.select <- list(formula=~Release_location + time + Release_DOY)
 
-p.select <- list(formula=~Tag_type + Release_DOY + time)
+p.select <- list(formula=~Tag_type + time + Release_DOY)
 
 cjs.test <- crm(test.proc, ddl = test.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
                  hessian = TRUE, accumulate = FALSE)
 
 cjs.test
+
+predict(cjs.test)
 
 
 #####
@@ -647,53 +924,4 @@ new.models2[[22]]
 
 warnings()
 
-
-##### Explore fitting MRM with only barge observations ####
-
-All_wide2 <- All_wide
-
-All_wide2[, ch := as.character(paste0("1", `Lower Green Barge 1`, `Lower Green Barge 2`))]
-
-# Create a new data.table that is a subset of variables from 'All_wide' for use in mark-recapture-modelling
-
-MRM_data <- with(All_wide2, data.table(ch, 
-                                      Tag_type = factor(Tag_type),
-                                      Release_location = factor(Release_location),
-                                      Release_DOY = DOY,
-                                      Species = factor(Species),
-                                      Hatchery_status = factor(Hatchery_status),
-                                      Length,
-                                      Ten_day_mean))
-
-str(MRM_data)
-
-
-# Exclude Coho
-
-MRM_data <- MRM_data[Species == "Chinook", ]
-MRM_data[, Species := NULL]
-
-MRM_data <- MRM_data[Release_location != "Tukwila Pedestrian Bridge", ]
-
-
-## Experiment with constructing CJS models  ##
-
-test2.proc <- process.data(data = MRM_data, 
-                          model = "CJS",
-                          groups = c("Tag_type", "Release_location", "Hatchery_status"), 
-                          accumulate = FALSE)
-
-test2.ddl <- make.design.data(test2.proc)
-
-
-Phi.select <- list(formula=~Release_location + time + Release_DOY + Length)
-
-p.select <- list(formula=~Tag_type + Release_DOY + time)
-
-cjs.test2 <- crm(test2.proc, ddl = test2.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
-                hessian = TRUE, accumulate = FALSE)
-
-cjs.test2
-
-plogis(-11.13 + 2.68)
 
