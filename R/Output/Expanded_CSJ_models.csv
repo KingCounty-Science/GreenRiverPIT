@@ -1,0 +1,9 @@
+"model","npar","AIC","DeltaAIC","weight","neg2lnl","convergence"
+"Phi(~Release_location + Array + Release_DOY + Ten_day_mean)p(~Tag_type + Array * Release_DOY)",11,9004.39098123279,0,0.663490512743489,8982.39098123279,0
+"Phi(~Release_location + Array + Release_DOY + Ten_day_mean)p(~Tag_type + Array * Release_DOY + Length)",12,9005.89544781201,1.5044665792193,0.312711570361871,8981.89544781201,0
+"Phi(~Release_location + Array + Release_DOY + Length)p(~Tag_type + Array * Release_DOY)",11,9012.41132754343,8.02034631064089,0.0120292525940123,8990.41132754343,0
+"Phi(~Release_location + Array + Release_DOY + Length)p(~Tag_type + Array * Release_DOY + Length)",12,9012.91711361671,8.52613238392041,0.00934132740792819,8988.91711361671,0
+"Phi(~Release_location + Array + Release_DOY)p(~Tag_type + Array * Release_DOY)",10,9017.49107073802,13.1000895052293,0.00094882566822407,8997.49107073802,0
+"Phi(~Release_location + Array + Release_DOY + Hatchery_status)p(~Tag_type + Array * Release_DOY)",11,9018.14774382336,13.7567625905631,0.000683268935687791,8996.14774382336,0
+"Phi(~Release_location + Array + Release_DOY)p(~Tag_type + Array * Release_DOY + Length)",11,9018.90584261704,14.5148613842466,0.000467705648443705,8996.90584261704,0
+"Phi(~Release_location + Array + Release_DOY + Hatchery_status)p(~Tag_type + Array * Release_DOY + Length)",12,9019.61832104503,15.2273398122361,0.000327536640343912,8995.61832104503,0
