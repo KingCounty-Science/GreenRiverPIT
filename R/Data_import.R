@@ -1,5 +1,6 @@
 
-## Connect to the PIT-tagging database and query data for the 2024 analysis ##
+## This code queries, summarizes, visualizes, and models the 2024 juvenile Chinook salmon PIT-tagging data from the Green River ##
+## For questions contact Aaron David (adavid@kingcounty.gov) ##
 
 
 #### Load packages ####
@@ -93,7 +94,6 @@ Detections_summary <- Detections[Record_type == "Tag", .(.N,
                                  keyby = .(Hex_tag_ID, Array, Upload_FK)]
 
 
-
 # Convert the deployed tags to a data.table and examine these data
 
 setDT(Deployed); str(Deployed)
@@ -106,7 +106,7 @@ length(unique(Deployed$Dec_tag_ID))
 
 # Add a character length vector for the decimal tag ID and export the table to a csv file
 
-Deployed$N_char <- nchar(Deployed$Dec_tag_ID)
+Deployed[, N_char := nchar(Deployed$Dec_tag_ID)]
 
 write.table(x = Deployed, file = "R/Output/Deployed_tags.csv", sep = ",", row.names = F)
 
@@ -332,7 +332,7 @@ ggsave(filename = "Flow_plot.tiff", plot = Flow_plot, device = "tiff", path = "R
 USGS_flow[, Ten_day_mean := frollmean(x = Mean_flow, n = 10, fill = NA, align = "left", algo = "exact")]
 
 
-#### Reshape the merged data into a format for mark re-capture modeling ####
+#### Reshape the merged data into a format for mark-recapture modeling ####
 
 # Omit detections at the WDFW screw trap and slip 4
 
@@ -387,7 +387,7 @@ For_modeling <- merge(x = For_modeling, y = Flow_join, by.x = "Release_date", by
 
 Deployed_table <- Deployed_summary[Species == "Chinook", .(Total_deployed = sum(N)), by = Release_location]
 
-Detections_table <- For_modeling[Species == "Chinook", .(Detections = sum(Detected)), by = .(Release_location, Array)]
+Detections_table <- For_modeling[Species == "Chinook", .(Detections = sum(Detected)), keyby = .(Release_location, Array)]
 
 Detections_table <- Detections_table[!is.na(Array), ] # Drop NAs
 
@@ -396,6 +396,8 @@ Deployed_detection_table <- merge(x = Detections_table, y = Deployed_table, by =
 Deployed_detection_table[, Percent_detected := round(100*(Detections/Total_deployed),2)]
 
 print(Deployed_detection_table)
+
+write.table(x = Deployed_detection_table, file = "R/Output/Summary_table.csv", sep = ",", row.names = F)
 
 
 # Convert data to wide-format
@@ -433,16 +435,20 @@ All_wide[, ch := as.character(paste0("1", `Porter Side Channel`,
 
 # Generate summary values of detections at different arrays and for sequences of detection possibilities
 
-apply(All_wide[, `Porter Side Channel`:`Duwamish People's Park`], MARGIN = 2, FUN = sum)
+apply(All_wide[Species == "Chinook", `Porter Side Channel`:`Duwamish People's Park`], MARGIN = 2, FUN = sum)
 
-All_wide[, .N, by = ch]
+All_wide[Species == "Chinook", .N, by = ch]
+
+All_wide[Species == "Coho", .N, by = ch]
 
 
 # Change the capture history variable to only include the two lower Green barges, plus the initial tagging.
 
 All_wide[, ch := as.character(paste0("1", `Lower Green Barge 1`, `Lower Green Barge 2`))]
 
-All_wide[, .N, by = ch]
+All_wide[Species == "Chinook", .N, by = ch]
+
+All_wide[Species == "Coho", .N, by = ch]
 
 
 # Estimate the fork lengths of individual fish with missing fork lengths based on their release group
@@ -491,13 +497,12 @@ MRM_data <- with(All_wide, data.table(ch,
 str(MRM_data)
 
 
-##### Explore fitting cjs models with only the barge detections ####
+#### Fit cjs models with only the barge detections ####
 
 # Subset data to Chinook only
 
 MRM_data <- MRM_data[Species == "Chinook", ]
 MRM_data[, Species := NULL]
-MRM_data[, .N, by = ch]
 
 
 # Convert the numeric variables to z-scores
@@ -605,7 +610,11 @@ p.select <- list(formula=~Tag_type + Array*Release_DOY)
 bargecjs.simple <- crm(bargecjs.proc, ddl = bargecjs.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
                        hessian = TRUE, accumulate = FALSE)
 
+sink(file = "R/Output/Top_models.txt", type = "output")
+
 bargecjs.simple
+
+sink()
 
 bargecjs.pred <- predict(bargecjs.simple); predict(bargecjs.simple)
 
@@ -615,7 +624,6 @@ bargecjs.p <- data.table(bargecjs.pred$p); setorder(bargecjs.p, Release_DOY)
 
 
 # Plot predictions
-# Should change day of year to date on the x-axis
 
 tiff(filename = "R/Output/CJS_predictions_simple.tiff", width = 6.5, height = 5.0, units = "in", pointsize = 10, compression = "lzw",
      family = "sans", res = 400)
@@ -624,7 +632,7 @@ par(mfrow = c(2,1), mar = c(2,5,0,2), oma = c(3,0,2,0))
 
 plot(bargecjs.Phi$estimate ~ bargecjs.Phi$Release_DOY, ylab = "Apparent survival (Phi) \n to barge 1", xlab = "",
      subset = bargecjs.Phi$Release_location == "WDFW Screw Trap" & bargecjs.Phi$Array == "Barge 1", 
-     ylim = c(0,1), xlim = c(80, 180), type = "l", lwd = 2, bty = "l", col = "#8da0cb", xaxt = "n")
+     ylim = c(0,1), xlim = c(80, 176), type = "l", lwd = 2, bty = "l", col = "#8da0cb", xaxt = "n")
 
 polygon(y = c(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", estimate] + 
                 bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", se], 
@@ -634,7 +642,7 @@ polygon(y = c(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Bar
               rev(bargecjs.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Release_DOY])),
         col = "#8da0cb50", border = NA)
 
-axis(side = 1, labels = F)
+axis(side = 1, at = c(91, 105, 121, 135, 152, 166), labels = F)
 
 legend(x = 75, y = 0.8, legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
        lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
@@ -663,7 +671,10 @@ polygon(y = c(bargecjs.Phi[Release_location == "Tukwila Pedestrian Bridge" & Arr
 
 plot(bargecjs.p$estimate ~ bargecjs.p$Release_DOY, ylab = "Detection probability (p) \n at barge 1", xlab = "",
      subset = bargecjs.p$Tag_type == "9mm" & bargecjs.p$Array == "Barge 1",
-     ylim = c(0,1), xlim = c(80, 180), type = "l", lwd = 2, bty = "l", col = "#e41a1c")
+     ylim = c(0,1), xlim = c(80, 176), type = "l", lwd = 2, bty = "l", col = "#e41a1c", xaxt = "n")
+
+axis(side = 1, at = c(91, 105, 121, 135, 152, 166), 
+     labels = c("April-1", "April-15", "May-1", "May-15", "June-1", "June-15"))
 
 polygon(y = c(bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", estimate] + 
                 bargecjs.p[Tag_type == "9mm" & Array == "Barge 1", se], 
@@ -687,7 +698,7 @@ polygon(y = c(bargecjs.p[Tag_type == "12mm" & Array == "Barge 1", estimate] +
 legend("topleft", legend = c("12mm tag", "9mm tag"),
        lwd = 2, col = c("#377eb8", "#e41a1c"), bty = "n")
 
-mtext(text = "Release day of year", line = 1, outer = TRUE, side = 1)
+mtext(text = "Release date", line = 1, outer = TRUE, side = 1)
 
 dev.off()
 
@@ -703,6 +714,12 @@ bargecjs.ex <- crm(bargecjs.proc, ddl = bargecjs.ddl, model.parameters = list(Ph
                        hessian = TRUE, accumulate = FALSE, initial = bargecjs.simple)
 
 bargecjs.ex
+
+sink(file = "R/Output/Top_models.txt", type = "output", append = T)
+
+bargecjs.ex
+
+sink()
 
 
 Vis.predict.DOY <- expand.grid(Release_location = c("Palmer Ponds Outlet", "Tukwila Pedestrian Bridge", "WDFW Screw Trap"),
@@ -743,9 +760,9 @@ tiff(filename = "R/Output/CJS_predictions_DOY.tiff", width = 6.5, height = 5.0, 
 
 par(mfrow = c(2,1), mar = c(2,5,0,2), oma = c(3,0,2,0))
 
-plot(bargecjs.DOY.Phi$estimate ~ bargecjs.DOY.Phi$Release_DOY, , ylab = "Apparent survival (Phi) \n to barge 1", xlab = "",
+plot(bargecjs.DOY.Phi$estimate ~ bargecjs.DOY.Phi$Release_DOY, ylab = "Apparent survival (Phi) \n to barge 1", xlab = "",
      subset = bargecjs.DOY.Phi$Release_location == "WDFW Screw Trap" & bargecjs.DOY.Phi$Array == "Barge 1", 
-     ylim = c(0,1), xlim = c(80,180), type = "l", lwd = 2, bty = "l", col = "#8da0cb", xaxt = "n")
+     ylim = c(0,1), xlim = c(80,176), type = "l", lwd = 2, bty = "l", col = "#8da0cb", xaxt = "n")
 
 polygon(y = c(bargecjs.DOY.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", estimate] + 
                 bargecjs.DOY.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", se], 
@@ -755,7 +772,7 @@ polygon(y = c(bargecjs.DOY.Phi[Release_location == "WDFW Screw Trap" & Array == 
               rev(bargecjs.DOY.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Release_DOY])),
         col = "#8da0cb50", border = NA)
 
-axis(side = 1, labels = F)
+axis(side = 1, at = c(91, 105, 121, 135, 152, 166), labels = F)
 
 legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
        lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
@@ -784,7 +801,10 @@ polygon(y = c(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" &
 
 plot(bargecjs.DOY.p$estimate ~ bargecjs.DOY.p$Release_DOY, ylab = "Detection probability (p) \n at barge 1", xlab = "",
      subset = bargecjs.DOY.p$Tag_type == "9mm" & bargecjs.DOY.p$Array == "Barge 1", 
-     ylim = c(0,1), xlim = c(80, 180), type = "l", lwd = 2, bty = "l", col = "#e41a1c")
+     ylim = c(0,1), xlim = c(80, 176), type = "l", lwd = 2, bty = "l", col = "#e41a1c", xaxt = "n")
+
+axis(side = 1, at = c(91, 105, 121, 135, 152, 166), 
+     labels = c("April-1", "April-15", "May-1", "May-15", "June-1", "June-15"))
 
 polygon(y = c(bargecjs.DOY.p[Tag_type == "9mm" & Array == "Barge 1", estimate] + 
                 bargecjs.DOY.p[Tag_type == "9mm" & Array == "Barge 1", se], 
@@ -808,7 +828,7 @@ polygon(y = c(bargecjs.DOY.p[Tag_type == "12mm" & Array == "Barge 1", estimate] 
 legend("topleft", legend = c("12mm tag", "9mm tag"),
        lwd = 2, col = c("#377eb8", "#e41a1c"), bty = "n")
 
-mtext(text = "Release day of year", line = 1, outer = TRUE, side = 1)
+mtext(text = "Release date", line = 1, outer = TRUE, side = 1)
 
 dev.off()
 
@@ -832,7 +852,7 @@ polygon(y = c(bargecjs.flow.Phi[Release_location == "WDFW Screw Trap" & Array ==
               rev(bargecjs.flow.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Ten_day_mean])),
         col = "#8da0cb50", border = NA)
 
-legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
+legend(x = 500, y = 0.9, legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
        lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
 
 lines(bargecjs.flow.Phi$estimate ~ bargecjs.flow.Phi$Ten_day_mean, col = "#fc8d62", lwd = 2,
@@ -860,7 +880,7 @@ polygon(y = c(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" 
 dev.off()
 
 
-##### Old code (not currently using) ####
+#### Old code (not currently using) ####
 
 fit.cjs.models <- function()
 {
@@ -991,7 +1011,7 @@ cjs.test
 predict(cjs.test)
 
 
-#####
+###
 
 new.proc <- process.data(data = Experimental_MRM_chinook, 
                           model = "CJS",
