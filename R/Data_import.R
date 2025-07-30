@@ -603,6 +603,8 @@ p.select <- list(formula=~Tag_type + Array*Release_DOY)
 bargecjs.simple <- crm(bargecjs.proc, ddl = bargecjs.ddl, model.parameters = list(Phi = Phi.select, p = p.select),
                        hessian = TRUE, accumulate = FALSE)
 
+bargecjs.simple
+
 sink(file = "R/Output/Top_models.txt", type = "output")
 
 bargecjs.simple
