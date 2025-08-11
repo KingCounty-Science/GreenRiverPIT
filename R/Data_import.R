@@ -818,7 +818,7 @@ bargecjs.flow.Phi <- data.table(bargecjs.flow.pred$Phi)
 bargecjs.flow.p <- data.table(bargecjs.flow.pred$p)
 
 
-# Predictions while holding flow constant with standard errors
+# Predictions while holding flow constant with standard errors (omitting Tukwila releases)
 
 tiff(filename = "R/Output/CJS_predictions_DOY.tiff", width = 6.5, height = 5.0, units = "in", pointsize = 10, compression = "lzw",
      family = "sans",res = 400)
@@ -839,8 +839,8 @@ polygon(y = c(bargecjs.DOY.Phi[Release_location == "WDFW Screw Trap" & Array == 
 
 axis(side = 1, at = c(91, 105, 121, 135, 152, 166), labels = F)
 
-legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
-       lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
+legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap"),
+       lwd = 2, col = c("#fc8d62", "#8da0cb"), bty = "n")
 
 lines(bargecjs.DOY.Phi$estimate ~ bargecjs.DOY.Phi$Release_DOY, col = "#fc8d62", lwd = 2,
       subset = bargecjs.DOY.Phi$Release_location == "Palmer Ponds Outlet" & bargecjs.DOY.Phi$Array == "Barge 1")
@@ -852,17 +852,6 @@ polygon(y = c(bargecjs.DOY.Phi[Release_location == "Palmer Ponds Outlet" & Array
         x = c(bargecjs.DOY.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Release_DOY], 
               rev(bargecjs.DOY.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Release_DOY])),
         col = "#fc8d6250", border = NA)
-
-lines(bargecjs.DOY.Phi$estimate ~ bargecjs.DOY.Phi$Release_DOY, col = "#66c2a5", lwd = 2,
-      subset = bargecjs.DOY.Phi$Release_location == "Tukwila Pedestrian Bridge" & bargecjs.DOY.Phi$Array == "Barge 1")
-
-polygon(y = c(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", estimate] + 
-                bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", se], 
-              rev(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", estimate] -
-                    bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", se])),
-        x = c(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Release_DOY], 
-              rev(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Release_DOY])),
-        col = "#66c2a550", border = NA)
 
 plot(bargecjs.DOY.p$estimate ~ bargecjs.DOY.p$Release_DOY, ylab = "Detection probability (p) \n at barge 1", xlab = "",
      subset = bargecjs.DOY.p$Tag_type == "9mm" & bargecjs.DOY.p$Array == "Barge 1", 
@@ -898,7 +887,7 @@ mtext(text = "Release date", line = 1, outer = TRUE, side = 1)
 dev.off()
 
 
-# Predictions while holding flow constant with upper and lower confidence intervals
+# Predictions while holding flow constant with upper and lower confidence intervals (omitting Tukwila releases)
 
 tiff(filename = "R/Output/CJS_predictions_DOY_CI.tiff", width = 6.5, height = 5.0, units = "in", pointsize = 10, compression = "lzw",
      family = "sans",res = 400)
@@ -917,8 +906,8 @@ polygon(y = c(bargecjs.DOY.Phi[Release_location == "WDFW Screw Trap" & Array == 
 
 axis(side = 1, at = c(91, 105, 121, 135, 152, 166), labels = F)
 
-legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
-       lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
+legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap"),
+       lwd = 2, col = c("#fc8d62", "#8da0cb"), bty = "n")
 
 lines(bargecjs.DOY.Phi$estimate ~ bargecjs.DOY.Phi$Release_DOY, col = "#fc8d62", lwd = 2,
       subset = bargecjs.DOY.Phi$Release_location == "Palmer Ponds Outlet" & bargecjs.DOY.Phi$Array == "Barge 1")
@@ -928,15 +917,6 @@ polygon(y = c(bargecjs.DOY.Phi[Release_location == "Palmer Ponds Outlet" & Array
         x = c(bargecjs.DOY.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Release_DOY], 
               rev(bargecjs.DOY.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Release_DOY])),
         col = "#fc8d6250", border = NA)
-
-lines(bargecjs.DOY.Phi$estimate ~ bargecjs.DOY.Phi$Release_DOY, col = "#66c2a5", lwd = 2,
-      subset = bargecjs.DOY.Phi$Release_location == "Tukwila Pedestrian Bridge" & bargecjs.DOY.Phi$Array == "Barge 1")
-
-polygon(y = c(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", ucl], 
-              rev(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", lcl])),
-        x = c(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Release_DOY], 
-              rev(bargecjs.DOY.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Release_DOY])),
-        col = "#66c2a550", border = NA)
 
 plot(bargecjs.DOY.p$estimate ~ bargecjs.DOY.p$Release_DOY, ylab = "Detection probability (p) \n at barge 1", xlab = "",
      subset = bargecjs.DOY.p$Tag_type == "9mm" & bargecjs.DOY.p$Array == "Barge 1", 
@@ -968,7 +948,7 @@ mtext(text = "Release date", line = 1, outer = TRUE, side = 1)
 dev.off()
 
 
-# Phi predictions while holding release DOY constant with standard errors
+# Phi predictions while holding release DOY constant with standard errors (omitting Tukwila releases)
 
 tiff(filename = "R/Output/CJS_predictions_flow.tiff", width = 6.5, height = 4.0, units = "in", pointsize = 10, compression = "lzw",
      family = "sans",res = 400)
@@ -987,8 +967,8 @@ polygon(y = c(bargecjs.flow.Phi[Release_location == "WDFW Screw Trap" & Array ==
               rev(bargecjs.flow.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Ten_day_mean])),
         col = "#8da0cb50", border = NA)
 
-legend(x = 500, y = 0.9, legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
-       lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
+legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap"),
+       lwd = 2, col = c("#fc8d62", "#8da0cb"), bty = "n")
 
 lines(bargecjs.flow.Phi$estimate ~ bargecjs.flow.Phi$Ten_day_mean, col = "#fc8d62", lwd = 2,
       subset = bargecjs.flow.Phi$Release_location == "Palmer Ponds Outlet" & bargecjs.flow.Phi$Array == "Barge 1")
@@ -1001,21 +981,10 @@ polygon(y = c(bargecjs.flow.Phi[Release_location == "Palmer Ponds Outlet" & Arra
               rev(bargecjs.flow.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Ten_day_mean])),
         col = "#fc8d6250", border = NA)
 
-lines(bargecjs.flow.Phi$estimate ~ bargecjs.flow.Phi$Ten_day_mean, col = "#66c2a5", lwd = 2,
-      subset = bargecjs.flow.Phi$Release_location == "Tukwila Pedestrian Bridge" & bargecjs.flow.Phi$Array == "Barge 1")
-
-polygon(y = c(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", estimate] + 
-                bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", se], 
-              rev(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", estimate] -
-                    bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", se])),
-        x = c(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Ten_day_mean], 
-              rev(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Ten_day_mean])),
-        col = "#66c2a550", border = NA)
-
 dev.off()
 
 
-# Phi predictions while holding release DOY constant with upper and lower confidence intervals
+# Phi predictions while holding release DOY constant with upper and lower confidence intervals (omitting Tukwila releases)
 
 tiff(filename = "R/Output/CJS_predictions_flow_CI.tiff", width = 6.5, height = 4.0, units = "in", pointsize = 10, compression = "lzw",
      family = "sans",res = 400)
@@ -1032,8 +1001,8 @@ polygon(y = c(bargecjs.flow.Phi[Release_location == "WDFW Screw Trap" & Array ==
               rev(bargecjs.flow.Phi[Release_location == "WDFW Screw Trap" & Array == "Barge 1", Ten_day_mean])),
         col = "#8da0cb50", border = NA)
 
-legend(x = 500, y = 0.9, legend = c("Palmer Ponds", "WDFW Screw Trap", "Tukwila Pedestrian Bridge"),
-       lwd = 2, col = c("#fc8d62", "#8da0cb", "#66c2a5"), bty = "n")
+legend("topleft", legend = c("Palmer Ponds", "WDFW Screw Trap"),
+       lwd = 2, col = c("#fc8d62", "#8da0cb"), bty = "n")
 
 lines(bargecjs.flow.Phi$estimate ~ bargecjs.flow.Phi$Ten_day_mean, col = "#fc8d62", lwd = 2,
       subset = bargecjs.flow.Phi$Release_location == "Palmer Ponds Outlet" & bargecjs.flow.Phi$Array == "Barge 1")
@@ -1043,14 +1012,5 @@ polygon(y = c(bargecjs.flow.Phi[Release_location == "Palmer Ponds Outlet" & Arra
         x = c(bargecjs.flow.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Ten_day_mean], 
               rev(bargecjs.flow.Phi[Release_location == "Palmer Ponds Outlet" & Array == "Barge 1", Ten_day_mean])),
         col = "#fc8d6250", border = NA)
-
-lines(bargecjs.flow.Phi$estimate ~ bargecjs.flow.Phi$Ten_day_mean, col = "#66c2a5", lwd = 2,
-      subset = bargecjs.flow.Phi$Release_location == "Tukwila Pedestrian Bridge" & bargecjs.flow.Phi$Array == "Barge 1")
-
-polygon(y = c(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", ucl], 
-              rev(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", lcl])),
-        x = c(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Ten_day_mean], 
-              rev(bargecjs.flow.Phi[Release_location == "Tukwila Pedestrian Bridge" & Array == "Barge 1", Ten_day_mean])),
-        col = "#66c2a550", border = NA)
 
 dev.off()
